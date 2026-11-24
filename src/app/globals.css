@@ -70,14 +70,14 @@ body {
   }
 }
 
-.kitten-stage[data-state="due"] > svg {
+.kitten-stage[data-reminding="true"] > svg {
   animation: kitten-hop 0.7s ease-in-out 3;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .kitten-eyes,
   .kitten-tail,
-  .kitten-stage[data-state="due"] > svg {
+  .kitten-stage[data-reminding="true"] > svg {
     animation: none;
   }
 }

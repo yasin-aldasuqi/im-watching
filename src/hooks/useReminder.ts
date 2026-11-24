@@ -1,15 +1,21 @@
-import { useCallback, useEffect, useReducer, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
+import { REMINDER_MESSAGES } from "@/lib/messages";
 import {
-  DEFAULT_INTERVAL_MIN,
+  DEFAULT_INTERVAL_SEC,
   createInitialState,
   isIntervalOption,
-  minutesToMs,
   reminderReducer,
   remainingMs,
+  secondsToMs,
 } from "@/lib/reminder";
 
-export const INTERVAL_STORAGE_KEY = "im-watching:interval-min";
+export const INTERVAL_STORAGE_KEY = "im-watching:interval-sec";
+export const AUTO_RESTART_STORAGE_KEY = "im-watching:auto-restart";
 export const DUE_TITLE = "⏰ Sit up straight! · I'm Watching";
+export const NOTIFICATION_TITLE = "I'm Watching 👀";
+
+/** How long the bubble stays up after an automatic restart. */
+export const REMINDER_VISIBLE_MS = 10_000;
 
 const TICK_MS = 1000;
 
@@ -52,12 +58,35 @@ function getPermissionServerSnapshot(): NotificationStatus {
   return "unsupported";
 }
 
-function readStoredInterval(): number | null {
+function readStorage(key: string): string | null {
   try {
-    const minutes = Number(window.localStorage.getItem(INTERVAL_STORAGE_KEY));
-    return isIntervalOption(minutes) ? minutes : null;
+    return window.localStorage.getItem(key);
   } catch {
-    // Storage can be blocked (private mode, site settings). Use the default.
+    // Storage can be blocked (private mode, site settings). Use the defaults.
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Not saving the choice is fine.
+  }
+}
+
+function showNotification(body: string): Notification | null {
+  if (!notificationsSupported() || Notification.permission !== "granted") return null;
+  try {
+    const notification = new Notification(NOTIFICATION_TITLE, { body });
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+    return notification;
+  } catch {
+    // Some mobile browsers only allow notifications from a service worker.
+    // The in-page reminder still works.
     return null;
   }
 }
@@ -65,13 +94,12 @@ function readStoredInterval(): number | null {
 /**
  * Connects the pure reminder state machine to the browser: a 1-second tick
  * while running, an immediate re-check when the tab becomes visible again,
- * and the side effects of a due reminder (tab title and an optional
- * notification).
+ * and the side effects of a reminder (tab title and an optional notification).
  */
 export function useReminder() {
   const [state, dispatch] = useReducer(
     reminderReducer,
-    minutesToMs(DEFAULT_INTERVAL_MIN),
+    secondsToMs(DEFAULT_INTERVAL_SEC),
     createInitialState,
   );
   // The clock is never read during render: the page is prerendered, and a
@@ -83,6 +111,12 @@ export function useReminder() {
     getPermissionSnapshot,
     getPermissionServerSnapshot,
   );
+  const notificationRef = useRef<Notification | null>(null);
+
+  const closeNotification = useCallback(() => {
+    notificationRef.current?.close();
+    notificationRef.current = null;
+  }, []);
 
   const dispatchNow = useCallback((type: "start" | "pause" | "resume" | "acknowledge") => {
     const t = Date.now();
@@ -90,11 +124,16 @@ export function useReminder() {
     dispatch({ type, now: t });
   }, []);
 
-  // The saved interval is read after hydration. Reading it during the first
+  // Saved settings are read after hydration. Reading them during the first
   // render would make the client HTML differ from the server HTML.
   useEffect(() => {
-    const saved = readStoredInterval();
-    if (saved !== null) dispatch({ type: "setInterval", intervalMs: minutesToMs(saved) });
+    const seconds = Number(readStorage(INTERVAL_STORAGE_KEY));
+    if (isIntervalOption(seconds)) {
+      dispatch({ type: "setInterval", intervalMs: secondsToMs(seconds) });
+    }
+    if (readStorage(AUTO_RESTART_STORAGE_KEY) === "true") {
+      dispatch({ type: "setAutoRestart", autoRestart: true });
+    }
   }, []);
 
   useEffect(() => {
@@ -103,7 +142,7 @@ export function useReminder() {
     const tick = () => {
       const t = Date.now();
       setNow(t);
-      dispatch({ type: "tick", now: t });
+      dispatch({ type: "tick", now: t, random: Math.random() });
     };
     const id = window.setInterval(tick, TICK_MS);
     // Background tabs get throttled timers. Re-check as soon as the user is back.
@@ -114,43 +153,45 @@ export function useReminder() {
     };
   }, [state.status]);
 
-  useEffect(() => {
-    if (state.status !== "due") return;
+  const message = state.messageIndex === null ? null : REMINDER_MESSAGES[state.messageIndex];
 
+  // One notification per reminder. A new one replaces the previous one, so
+  // they never pile up while the user is away.
+  useEffect(() => {
+    if (state.reminderCount === 0 || message === null) return;
+    closeNotification();
+    notificationRef.current = showNotification(message);
+  }, [state.reminderCount, message, closeNotification]);
+
+  useEffect(() => closeNotification, [closeNotification]);
+
+  // A reminder is "visible" while waiting for the user, or for a few seconds
+  // after an automatic restart.
+  const reminderVisible =
+    message !== null &&
+    (state.status === "due" ||
+      (state.status === "running" &&
+        state.lastReminderAt !== null &&
+        now - state.lastReminderAt < REMINDER_VISIBLE_MS));
+
+  useEffect(() => {
+    if (!reminderVisible) return;
     const previousTitle = document.title;
     document.title = DUE_TITLE;
-
-    let notification: Notification | undefined;
-    if (notificationsSupported() && Notification.permission === "granted") {
-      try {
-        notification = new Notification("I'm Watching", {
-          body: "Time to sit up straight and roll your shoulders back.",
-          tag: "posture-reminder",
-        });
-        notification.onclick = () => {
-          window.focus();
-          notification?.close();
-        };
-      } catch {
-        // Some mobile browsers only allow notifications from a service worker.
-        // The in-page reminder still works.
-      }
-    }
-
     return () => {
       document.title = previousTitle;
-      notification?.close();
     };
-  }, [state.status]);
+  }, [reminderVisible]);
 
-  const setIntervalMinutes = useCallback((minutes: number) => {
-    if (!isIntervalOption(minutes)) return;
-    dispatch({ type: "setInterval", intervalMs: minutesToMs(minutes) });
-    try {
-      window.localStorage.setItem(INTERVAL_STORAGE_KEY, String(minutes));
-    } catch {
-      // Not saving the choice is fine.
-    }
+  const setIntervalSeconds = useCallback((seconds: number) => {
+    if (!isIntervalOption(seconds)) return;
+    dispatch({ type: "setInterval", intervalMs: secondsToMs(seconds) });
+    writeStorage(INTERVAL_STORAGE_KEY, String(seconds));
+  }, []);
+
+  const setAutoRestart = useCallback((autoRestart: boolean) => {
+    dispatch({ type: "setAutoRestart", autoRestart });
+    writeStorage(AUTO_RESTART_STORAGE_KEY, String(autoRestart));
   }, []);
 
   const requestNotifications = useCallback(async () => {
@@ -162,13 +203,23 @@ export function useReminder() {
   return {
     status: state.status,
     remainingMs: remainingMs(state, now),
-    intervalMinutes: state.intervalMs / minutesToMs(1),
+    intervalSeconds: state.intervalMs / 1000,
+    autoRestart: state.autoRestart,
+    reminderVisible,
+    message: reminderVisible ? message : null,
     start: () => dispatchNow("start"),
     pause: () => dispatchNow("pause"),
     resume: () => dispatchNow("resume"),
-    acknowledge: () => dispatchNow("acknowledge"),
-    reset: () => dispatch({ type: "reset" }),
-    setIntervalMinutes,
+    acknowledge: () => {
+      closeNotification();
+      dispatchNow("acknowledge");
+    },
+    reset: () => {
+      closeNotification();
+      dispatch({ type: "reset" });
+    },
+    setIntervalSeconds,
+    setAutoRestart,
     notificationStatus,
     requestNotifications,
   };
