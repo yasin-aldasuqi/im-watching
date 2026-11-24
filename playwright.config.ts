@@ -26,8 +26,11 @@ export default defineConfig({
     },
   ],
   // Test the production build, on a port that does not clash with `npm run dev`.
+  // In CI the app was already built by an earlier step, so it is only started.
   webServer: {
-    command: `npm run build && npx next start -p ${PORT}`,
+    command: process.env.CI
+      ? `npx next start -p ${PORT}`
+      : `npm run build && npx next start -p ${PORT}`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

@@ -12,8 +12,12 @@ export type PageWatch = {
   errors: string[];
 };
 
-/** External requests that were attempted and NOT blocked by the CSP, so they left the browser. */
-export function externalSent(watch: PageWatch): string[] {
+/**
+ * External requests the CSP did NOT block: in a real browser these would leave
+ * the device. (In tests they are aborted by a safety net, so nothing actually
+ * leaves even when a protection is broken on purpose.)
+ */
+export function externalLeaks(watch: PageWatch): string[] {
   const blocked = [...watch.blockedByCsp];
   return watch.externalAttempts.filter((url) => {
     const index = blocked.indexOf(url);
@@ -31,6 +35,12 @@ async function watchPage(page: Page, appOrigin: string): Promise<PageWatch> {
   page.on("request", (request) => {
     if (isExternal(request.url())) watch.externalAttempts.push(request.url());
   });
+  // Safety net: tests never send anything to another origin, even if the CSP
+  // is broken. The attempt is still recorded above and counted as a leak.
+  await page.route(
+    (url) => isExternal(url.href),
+    (route) => route.abort(),
+  );
   page.on("requestfailed", (request) => {
     // Chromium reports a request stopped by the CSP with the error text "csp".
     if (isExternal(request.url()) && request.failure()?.errorText === "csp") {
