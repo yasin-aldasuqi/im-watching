@@ -59,9 +59,25 @@ body {
   animation: kitten-tail-sway 3s ease-in-out infinite;
 }
 
+/* The kitten hops a few times when a reminder is due (see ReminderPanel). */
+@keyframes kitten-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-14px);
+  }
+}
+
+.kitten-stage[data-state="due"] > svg {
+  animation: kitten-hop 0.7s ease-in-out 3;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .kitten-eyes,
-  .kitten-tail {
+  .kitten-tail,
+  .kitten-stage[data-state="due"] > svg {
     animation: none;
   }
 }
