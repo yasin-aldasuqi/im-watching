@@ -3,10 +3,16 @@ import { expect, externalLeaks, test } from "./fixtures";
 // Chromium runs with a fake camera (see playwright.config.ts). It shows a
 // moving test pattern, not a person, so the real model finds nobody.
 
+// Loading the real model takes a few seconds alone, but can take about 30 s
+// when several browsers share a small CI machine. Playwright's default limit
+// for a whole test is 30 s, so these tests get limits that fit their work.
+const MODEL_LOAD_TIMEOUT = 60_000;
+
 test("the camera check runs the real model from our own origin and turns off cleanly", async ({
   page,
   watch,
 }) => {
+  test.setTimeout(120_000);
   const sameOriginPaths: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
@@ -19,7 +25,7 @@ test("the camera check runs the real model from our own origin and turns off cle
 
   await page.getByRole("button", { name: "Turn on camera" }).click();
   // "on" is only reached after the real model has loaded and initialized.
-  await expect(status).toHaveText(/Sit up straight, then press/, { timeout: 60_000 });
+  await expect(status).toHaveText(/Sit up straight, then press/, { timeout: MODEL_LOAD_TIMEOUT });
   await expect(page.getByLabel("Your camera preview")).toBeVisible();
 
   expect(sameOriginPaths).toContain("/models/pose_landmarker_lite.task");
@@ -38,12 +44,12 @@ test("the camera check runs the real model from our own origin and turns off cle
 });
 
 test("nothing leaves the browser while the camera runs, even after a minute", async ({ page, watch }) => {
-  test.slow(); // Runs for more than a minute on purpose.
+  test.setTimeout(180_000); // Runs for more than a minute on purpose, plus the model load.
 
   await page.goto("/");
   await page.getByRole("button", { name: "Turn on camera" }).click();
   await expect(page.getByTestId("camera-status")).toHaveText(/Sit up straight, then press/, {
-    timeout: 60_000,
+    timeout: MODEL_LOAD_TIMEOUT,
   });
 
   // MediaPipe's built-in usage logger sends a batch every 60 seconds, and
