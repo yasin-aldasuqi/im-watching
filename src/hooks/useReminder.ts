@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { REMINDER_MESSAGES } from "@/lib/messages";
+import { showNotification } from "@/lib/notifications";
 import {
   DEFAULT_INTERVAL_SEC,
   createInitialState,
@@ -11,52 +12,11 @@ import {
 
 export const INTERVAL_STORAGE_KEY = "im-watching:interval-sec";
 export const AUTO_RESTART_STORAGE_KEY = "im-watching:auto-restart";
-export const DUE_TITLE = "⏰ Sit up straight! · I'm Watching";
-export const NOTIFICATION_TITLE = "I'm Watching 👀";
 
 /** How long the bubble stays up after an automatic restart. */
 export const REMINDER_VISIBLE_MS = 10_000;
 
 const TICK_MS = 1000;
-
-export type NotificationStatus = "unsupported" | NotificationPermission;
-
-function notificationsSupported(): boolean {
-  return typeof window !== "undefined" && "Notification" in window;
-}
-
-// Notification permission lives outside React, so it is read with
-// useSyncExternalStore. The server snapshot is "unsupported", which keeps the
-// server HTML and the first client render the same.
-const permissionListeners = new Set<() => void>();
-
-function subscribeToPermission(onChange: () => void): () => void {
-  permissionListeners.add(onChange);
-  let permissionStatus: PermissionStatus | undefined;
-  let unsubscribed = false;
-  // Also follow changes made in the browser's site settings, where supported.
-  navigator.permissions
-    ?.query({ name: "notifications" })
-    .then((result) => {
-      if (unsubscribed) return;
-      permissionStatus = result;
-      result.addEventListener("change", onChange);
-    })
-    .catch(() => {});
-  return () => {
-    unsubscribed = true;
-    permissionListeners.delete(onChange);
-    permissionStatus?.removeEventListener("change", onChange);
-  };
-}
-
-function getPermissionSnapshot(): NotificationStatus {
-  return notificationsSupported() ? Notification.permission : "unsupported";
-}
-
-function getPermissionServerSnapshot(): NotificationStatus {
-  return "unsupported";
-}
 
 function readStorage(key: string): string | null {
   try {
@@ -75,26 +35,11 @@ function writeStorage(key: string, value: string): void {
   }
 }
 
-function showNotification(body: string): Notification | null {
-  if (!notificationsSupported() || Notification.permission !== "granted") return null;
-  try {
-    const notification = new Notification(NOTIFICATION_TITLE, { body });
-    notification.onclick = () => {
-      window.focus();
-      notification.close();
-    };
-    return notification;
-  } catch {
-    // Some mobile browsers only allow notifications from a service worker.
-    // The in-page reminder still works.
-    return null;
-  }
-}
-
 /**
  * Connects the pure reminder state machine to the browser: a 1-second tick
  * while running, an immediate re-check when the tab becomes visible again,
- * and the side effects of a reminder (tab title and an optional notification).
+ * and an optional notification for each reminder. The parent component
+ * handles the tab title, because more than one feature can change it.
  */
 export function useReminder() {
   const [state, dispatch] = useReducer(
@@ -106,11 +51,6 @@ export function useReminder() {
   // render must give the same HTML every time. `now` only matters while
   // running, and every action that starts a run sets it first.
   const [now, setNow] = useState(0);
-  const notificationStatus = useSyncExternalStore(
-    subscribeToPermission,
-    getPermissionSnapshot,
-    getPermissionServerSnapshot,
-  );
   const notificationRef = useRef<Notification | null>(null);
 
   const closeNotification = useCallback(() => {
@@ -174,15 +114,6 @@ export function useReminder() {
         state.lastReminderAt !== null &&
         now - state.lastReminderAt < REMINDER_VISIBLE_MS));
 
-  useEffect(() => {
-    if (!reminderVisible) return;
-    const previousTitle = document.title;
-    document.title = DUE_TITLE;
-    return () => {
-      document.title = previousTitle;
-    };
-  }, [reminderVisible]);
-
   const setIntervalSeconds = useCallback((seconds: number) => {
     if (!isIntervalOption(seconds)) return;
     dispatch({ type: "setInterval", intervalMs: secondsToMs(seconds) });
@@ -192,12 +123,6 @@ export function useReminder() {
   const setAutoRestart = useCallback((autoRestart: boolean) => {
     dispatch({ type: "setAutoRestart", autoRestart });
     writeStorage(AUTO_RESTART_STORAGE_KEY, String(autoRestart));
-  }, []);
-
-  const requestNotifications = useCallback(async () => {
-    if (!notificationsSupported()) return;
-    await Notification.requestPermission();
-    permissionListeners.forEach((listener) => listener());
   }, []);
 
   return {
@@ -220,7 +145,5 @@ export function useReminder() {
     },
     setIntervalSeconds,
     setAutoRestart,
-    notificationStatus,
-    requestNotifications,
   };
 }

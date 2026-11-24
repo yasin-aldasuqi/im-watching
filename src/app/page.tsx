@@ -1,5 +1,5 @@
 import Kitten from "@/components/Kitten";
-import ReminderPanel from "@/components/ReminderPanel";
+import PostureBuddy from "@/components/PostureBuddy";
 
 export default function Home() {
   return (
@@ -10,9 +10,9 @@ export default function Home() {
           Your posture buddy. Sit up tall, I&apos;ve got my eye on you.
         </p>
       </div>
-      <ReminderPanel>
+      <PostureBuddy>
         <Kitten className="h-auto w-48 sm:w-56" />
-      </ReminderPanel>
+      </PostureBuddy>
       <p className="text-sm text-stone-500 dark:text-stone-400">
         Camera is optional and never leaves your device.
       </p>
