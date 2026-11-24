@@ -5,7 +5,8 @@ Your posture buddy. Camera is optional and never leaves your device.
 **I'm Watching** is a small web app where a little orange Siberian kitten keeps an eye on you
 and gently reminds you to fix how you're sitting and straighten your back.
 
-> Status: project setup only. No features have been built yet.
+> Status: early development. The home page shows the kitten mascot (it blinks and sways its tail).
+> Posture reminders and the optional camera are not built yet.
 
 ## Tech stack
 
