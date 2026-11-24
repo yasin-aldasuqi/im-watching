@@ -1,0 +1,67 @@
+import { test as base, expect, type Page } from "@playwright/test";
+
+/** What the page did on the network and the console during a test. */
+export type PageWatch = {
+  /** Every request the page tried to make to another origin, sent or not. */
+  externalAttempts: string[];
+  /** External requests the Content Security Policy blocked before they were sent. */
+  blockedByCsp: string[];
+  /** Violations reported by the browser's `securitypolicyviolation` event. */
+  cspViolations: string[];
+  /** console.error messages and uncaught page errors. */
+  errors: string[];
+};
+
+/** External requests that were attempted and NOT blocked by the CSP, so they left the browser. */
+export function externalSent(watch: PageWatch): string[] {
+  const blocked = [...watch.blockedByCsp];
+  return watch.externalAttempts.filter((url) => {
+    const index = blocked.indexOf(url);
+    if (index === -1) return true;
+    blocked.splice(index, 1);
+    return false;
+  });
+}
+
+async function watchPage(page: Page, appOrigin: string): Promise<PageWatch> {
+  const watch: PageWatch = { externalAttempts: [], blockedByCsp: [], cspViolations: [], errors: [] };
+  const isExternal = (url: string) =>
+    !url.startsWith("data:") && !url.startsWith("blob:") && new URL(url).origin !== appOrigin;
+
+  page.on("request", (request) => {
+    if (isExternal(request.url())) watch.externalAttempts.push(request.url());
+  });
+  page.on("requestfailed", (request) => {
+    // Chromium reports a request stopped by the CSP with the error text "csp".
+    if (isExternal(request.url()) && request.failure()?.errorText === "csp") {
+      watch.blockedByCsp.push(request.url());
+    }
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") watch.errors.push(message.text());
+  });
+  page.on("pageerror", (error) => watch.errors.push(error.message));
+
+  await page.exposeFunction("__reportCspViolation", (text: string) => {
+    watch.cspViolations.push(text);
+  });
+  await page.addInitScript(() => {
+    document.addEventListener("securitypolicyviolation", (event) => {
+      (window as unknown as { __reportCspViolation: (t: string) => void }).__reportCspViolation(
+        `${event.violatedDirective} blocked ${event.blockedURI}`,
+      );
+    });
+  });
+
+  return watch;
+}
+
+export const test = base.extend<{ watch: PageWatch }>({
+  // The second parameter is Playwright's fixture callback. It is not named
+  // `use` here so the React hooks lint rule does not mistake it for a hook.
+  watch: async ({ page, baseURL }, provide) => {
+    await provide(await watchPage(page, new URL(baseURL!).origin));
+  },
+});
+
+export { expect };
