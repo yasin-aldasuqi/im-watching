@@ -14,23 +14,29 @@ The app used to be called "I'm Watching". Settings saved under the old name are 
 
 ## Features
 
-- **Periodic reminders.** Pick an interval from 30 seconds to 30 minutes (default 30 minutes) and
-  press Start. When time is up, the kitten hops, a speech bubble pops up, and the tab title changes.
-- **Cheeky messages.** Each reminder shows a random message from the kitten, such as "I can see
-  you. 👀", "Do what we agreed on.", or "Sit up straight or I knock your coffee off the desk. ☕".
-  The same message never shows twice in a row. The list is in
-  [`src/lib/messages.ts`](src/lib/messages.ts).
-- **Restart automatically (optional).**
-  - Off (the default): after a reminder, the kitten waits until you press "I'm sitting tall", so you
-    don't come back to a pile of reminders after a break.
+- **Your own reminders.** Four built-in reminders, each with its own timer:
+  🧍 Posture (30 min, on by default), 💧 Drink water (45 min), 👀 Rest your eyes (20 min, from the
+  20-20-20 rule), and 🙆 Stand up and stretch (1 hour). Turn any of them on or off, and add up to 10
+  custom reminders with your own name and emoji (for example "📞 Call mom").
+- **Everything is editable per reminder:** interval (30 seconds to 2 hours), auto restart, and the
+  messages the kitten says (one per line, up to 20). Built-in reminders can restore their default
+  messages.
+- **One session for all reminders.** Start, Pause, Resume, and Reset apply to every reminder that is
+  on. The big countdown shows the reminder that comes next, with a "Coming up" list for the rest.
+  Turning a reminder on, or changing its interval, during a session restarts only that reminder.
+- **Cheeky messages.** Each firing shows a random message from that reminder's list, never the same
+  one twice in a row. The defaults are in [`src/lib/messages.ts`](src/lib/messages.ts).
+- **Restart automatically (per reminder).**
+  - Off: after a reminder, the kitten waits until you press "Done" ("I'm sitting tall" for
+    posture), so you don't come back to a pile of reminders after a break.
   - On: the next countdown starts right away, and the bubble hides after 10 seconds. After a long
     time away you get one reminder, not one for every missed cycle.
-- **Optional desktop notifications** with the same message. Permission is requested only when you
-  click "Enable notifications". A new notification replaces the previous one. The in-page reminder
-  works without notifications.
-- **Pause, resume, and reset.** Time spent paused does not count.
-- **Local only.** The interval and the auto-restart choice are saved in your browser's
-  `localStorage`. Nothing is sent to a server.
+- **Optional desktop notifications** with the reminder's name in the title and its message in the
+  body. Permission is requested only when you click "Enable notifications". Each reminder's new
+  notification replaces its previous one. The in-page reminder works without notifications.
+- **Local only.** Your reminders are saved in your browser's `localStorage`. Nothing is sent to a
+  server. Saved data is treated as untrusted input and cleaned before use (length and count limits,
+  valid intervals, safe ids), so corrupted data falls back to the defaults instead of crashing.
 - **Optional camera posture check.** Turn on the camera, sit up straight, and press "Set my good
   posture". If you slouch for 5 seconds, the kitten calls you out ("Caught you slouching. 👀"), at
   most once a minute. See [Camera posture check](#camera-posture-check).
@@ -41,7 +47,7 @@ The app used to be called "I'm Watching". Settings saved under the old name are 
 
 ## How the timer works
 
-The reminder logic is a pure state machine in [`src/lib/reminder.ts`](src/lib/reminder.ts)
+Each reminder's timer is a pure state machine in [`src/lib/reminder.ts`](src/lib/reminder.ts)
 (`idle` → `running` → `due`, plus `paused`). It has no timers, no DOM access, and no
 `Math.random()`. The current time and a random number are passed in, which makes it easy to unit test.
 
@@ -49,8 +55,12 @@ Time is tracked as a deadline (`endsAt`), not as a counter decreased every secon
 throttle timers in background tabs, so a counter would fall behind. With a deadline, a late tick
 still gives the right answer, and the app re-checks as soon as the tab becomes visible again.
 
-[`src/hooks/useReminder.ts`](src/hooks/useReminder.ts) connects that logic to the browser: the
-1-second tick, notifications, and `localStorage`.
+[`src/lib/reminderSession.ts`](src/lib/reminderSession.ts) runs several of those timers at once
+(one per reminder) and applies changes safely. [`src/lib/reminders.ts`](src/lib/reminders.ts)
+defines the built-in and custom reminders and cleans saved data.
+[`src/hooks/useReminders.ts`](src/hooks/useReminders.ts) connects it all to the browser: loading
+and saving, the 1-second tick, and notifications. It saves only after loading, so React Strict
+Mode's double startup effects cannot overwrite saved reminders with the defaults.
 [`src/components/PostureBuddy.tsx`](src/components/PostureBuddy.tsx) owns the speech bubble and
 the tab title, because both the timer and the camera can change them.
 
@@ -146,12 +156,16 @@ Unit and component tests use [Vitest](https://vitest.dev) and React Testing Libr
 
 - `src/lib/reminder.test.ts`: unit tests for every state transition, auto restart, interval
   labels, and time formatting.
+- `src/lib/reminders.test.ts`: built-in and custom reminders, message cleaning, and cleaning of
+  untrusted saved data (bad types, unknown fields, unsafe ids, limits) and the migration.
+- `src/lib/reminderSession.test.ts`: several reminders at once, session controls, and safe
+  changes during a session.
 - `src/lib/messages.test.ts`: the message picker never repeats the last message and can reach
   every other message.
-- `src/components/ReminderPanel.test.tsx`: component tests with fake timers and a mocked
-  `Math.random()`. They cover manual and auto-restart cycles, the 10-second bubble, a 30-second
-  interval, pause and resume, a throttled background tab catching up, saved settings, and each
-  notification permission state (the Notification API is mocked).
+- `src/components/Reminders.test.tsx`: component tests with fake timers and a mocked
+  `Math.random()`. They cover one and several reminders, pause and resume, a throttled background
+  tab catching up, editing messages, adding and deleting a custom reminder, saving, migration,
+  corrupted data, React Strict Mode, and notifications (the Notification API is mocked).
 - `src/lib/posture.test.ts`: the posture measurement (aspect ratio, distance from the camera,
   hidden points), calibration, hysteresis, the 5-second hold, and the 60-second cooldown.
 - `src/lib/poseModel.test.ts`: the committed model file matches its pinned SHA-256, and the
