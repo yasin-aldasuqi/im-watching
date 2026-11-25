@@ -3,19 +3,27 @@ import PostureBuddy from "@/components/PostureBuddy";
 
 export default function Home() {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 px-4 py-12 text-center">
-      <div className="flex flex-col items-center gap-2">
-        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">Karamel</h1>
-        <p className="max-w-md text-lg text-stone-600 dark:text-stone-300">
-          Your posture buddy. Sit up tall, I&apos;ve got my eye on you.
-        </p>
-      </div>
-      <PostureBuddy>
-        <Kitten className="h-auto w-48 sm:w-56" />
-      </PostureBuddy>
-      <p className="text-sm text-stone-500 dark:text-stone-400">
+    <div className="flex flex-1 flex-col items-center gap-8 px-4 py-6 sm:py-10">
+      <header className="flex w-full max-w-5xl items-center gap-3">
+        <Kitten decorative className="h-12 w-12" />
+        <div className="text-left">
+          <h1 className="font-display text-3xl font-semibold leading-none tracking-tight text-accent">
+            Karamel
+          </h1>
+          <p className="text-sm text-soft">Your posture buddy. Sit up tall, I&apos;ve got my eye on you.</p>
+        </div>
+      </header>
+
+      <main className="flex w-full flex-1 justify-center">
+        <PostureBuddy>
+          <Kitten className="h-auto w-44 sm:w-52" />
+        </PostureBuddy>
+      </main>
+
+      <footer className="text-center text-sm text-soft">
+        <span aria-hidden="true">🔒 </span>
         Camera is optional and never leaves your device.
-      </p>
-    </main>
+      </footer>
+    </div>
   );
 }
