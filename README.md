@@ -40,6 +40,9 @@ The app used to be called "I'm Watching". Settings saved under the old name are 
 - **Optional camera posture check.** Turn on the camera, sit up straight, and press "Set my good
   posture". If you slouch for 5 seconds, the kitten calls you out ("Caught you slouching. 👀"), at
   most once a minute. See [Camera posture check](#camera-posture-check).
+- **Smart camera modes** for the posture reminder while the camera is on: Smart (skip the reminder
+  when you already sit well), Camera only (no posture timer, just slouch alerts), or Always. See
+  [Smart camera modes](#smart-camera-modes).
 - **Warm caramel design** with light and dark themes that follow your system. Every text and
   background pair meets WCAG contrast (at least 4.5:1). Fonts are self-hosted, so the strict CSP
   stays unchanged.
@@ -85,6 +88,27 @@ The camera is **off by default** and only starts when you press "Turn on camera"
    7.5% below it. This gap (hysteresis) stops the status from flickering at the edge.
 6. **Alerts** fire after 5 seconds of continuous slouching, at most once every 60 seconds. Leaving
    the camera's view resets the 5 seconds.
+
+### Smart camera modes
+
+"When the camera is on" decides what the 🧍 Posture reminder does. The modes apply only while the
+camera is on **and calibrated**, because before that it cannot judge posture. With the camera off,
+the posture timer works as usual. Other reminders (water, eyes, stretch, custom) are never skipped.
+
+| Mode | Posture timer |
+| --- | --- |
+| **Smart** (default) | When it fires, the camera is checked first. If you sit well, the reminder is skipped quietly (a short "Skipped" note and a counter show it) and the countdown starts over. If you slouch, or the camera cannot see you, you get the reminder. |
+| **Camera only** | No posture timer reminders. Its countdown is replaced by "the camera is watching". Slouch alerts still work. |
+| **Always** | Reminds on schedule, even when you sit well. |
+
+The skip decision happens in the pure session engine (`skipPosture` on the tick action), so it is
+unit tested without a camera. The mode is saved in `localStorage` and read with
+`useSyncExternalStore`, which also keeps two open tabs in sync.
+
+When the camera turns on and notifications are not decided yet, the camera card offers a "Turn on
+notifications" button. It is a button rather than an automatic prompt, because browsers only allow
+permission prompts right after a user click, and that click is long gone by the time the camera has
+started.
 
 ### Privacy
 
@@ -172,7 +196,10 @@ Unit and component tests use [Vitest](https://vitest.dev) and React Testing Libr
   runtime was copied.
 - `src/components/CameraPanel.test.tsx`: the camera flow with a fake camera and a fake model. It
   covers calibration, alerts, every error message, and that the camera is stopped when turned off,
-  on an error, when the page goes away, and when it is turned off while still starting.
+  on an error, when the page goes away, and when it is turned off while still starting. It also
+  covers the smart camera modes (skipping, camera only, before calibration, other reminders never
+  skipped, saving the mode) and the notification offer. It moves the clock one camera check at a
+  time, like a browser that re-renders between timer tasks.
 
 End-to-end tests use [Playwright](https://playwright.dev) with Chromium and a fake camera
 (`e2e/`). Every request to another origin is recorded and aborted, so tests never leak data.

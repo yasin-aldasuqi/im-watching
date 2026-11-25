@@ -23,6 +23,9 @@ export type SessionState = {
   timers: Record<string, ReminderState>;
   /** False until saved reminders were loaded, so defaults never overwrite saved data. */
   loaded: boolean;
+  /** Posture reminders skipped because the camera saw good posture (or watches instead). */
+  skippedCount: number;
+  lastSkippedAt: number | null;
 };
 
 export type ReminderPatch = Partial<
@@ -35,7 +38,11 @@ export type SessionAction =
   | { type: "pause"; now: number }
   | { type: "resume"; now: number }
   | { type: "reset" }
-  | { type: "tick"; now: number; random: number }
+  /**
+   * `skipPosture`: when the posture reminder is due at this tick, restart it
+   * quietly instead of reminding (the camera sees good posture, or watches instead).
+   */
+  | { type: "tick"; now: number; random: number; skipPosture?: boolean }
   | { type: "acknowledge"; id: string; now: number }
   | { type: "update"; id: string; patch: ReminderPatch; now: number }
   | { type: "add"; reminder: ReminderConfig; now: number }
@@ -50,7 +57,7 @@ function timersFor(reminders: ReminderConfig[]): Record<string, ReminderState> {
 }
 
 export function createSessionState(reminders: ReminderConfig[] = defaultReminders()): SessionState {
-  return { reminders, timers: timersFor(reminders), loaded: false };
+  return { reminders, timers: timersFor(reminders), loaded: false, skippedCount: 0, lastSkippedAt: null };
 }
 
 /** running: some timer is counting or waiting for "Done". paused: some timer is paused. */
@@ -78,7 +85,7 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
   switch (action.type) {
     case "load": {
       const reminders = sanitizeReminders(action.reminders);
-      return { reminders, timers: timersFor(reminders), loaded: true };
+      return { ...state, reminders, timers: timersFor(reminders), loaded: true };
     }
 
     case "start":
@@ -96,22 +103,36 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
       );
 
     case "reset":
-      return forEnabled(state, () => ({ type: "reset" }));
+      return { ...forEnabled(state, () => ({ type: "reset" })), skippedCount: 0, lastSkippedAt: null };
 
     case "tick":
       return state.reminders
         .filter((r) => r.enabled)
-        .reduce(
-          (s, config, i) =>
-            withTimer(s, config.id, {
-              type: "tick",
+        .reduce((s, config, i) => {
+          const timer = s.timers[config.id];
+          const wouldFire = timer?.status === "running" && action.now >= timer.endsAt;
+          if (wouldFire && config.kind === "posture" && action.skipPosture) {
+            // Restart the posture countdown quietly: no message, no notification.
+            // Reset and start the same timer, so its message history is kept.
+            const restarted = reminderReducer(reminderReducer(timer, { type: "reset" }), {
+              type: "start",
               now: action.now,
-              // A different random number per reminder, derived from the one given.
-              random: (action.random + i * 0.618_033_988_75) % 1,
-              messageCount: config.messages.length,
-            }),
-          state,
-        );
+            });
+            return {
+              ...s,
+              timers: { ...s.timers, [config.id]: restarted },
+              skippedCount: s.skippedCount + 1,
+              lastSkippedAt: action.now,
+            };
+          }
+          return withTimer(s, config.id, {
+            type: "tick",
+            now: action.now,
+            // A different random number per reminder, derived from the one given.
+            random: (action.random + i * 0.618_033_988_75) % 1,
+            messageCount: config.messages.length,
+          });
+        }, state);
 
     case "acknowledge":
       return withTimer(state, action.id, { type: "acknowledge", now: action.now });

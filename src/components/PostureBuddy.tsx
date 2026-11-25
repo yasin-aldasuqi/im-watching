@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { usePostureCamera } from "@/hooks/usePostureCamera";
+import { usePostureMode } from "@/hooks/usePostureMode";
 import { useReminders } from "@/hooks/useReminders";
 import { useNotificationPermission } from "@/lib/notifications";
 import type { ReminderConfig } from "@/lib/reminders";
@@ -29,10 +30,17 @@ type PostureBuddyProps = {
  * is about what the user is doing right now.
  */
 export default function PostureBuddy({ children }: PostureBuddyProps) {
-  const reminders = useReminders();
   // The ref is kept apart from the camera state, so the state can be read during render.
   const { videoRef, ...camera } = usePostureCamera();
+  const { mode, setMode } = usePostureMode();
   const notifications = useNotificationPermission();
+
+  // The modes only apply while the camera can judge posture: on, calibrated, not calibrating.
+  const cameraJudging = camera.cameraStatus === "on" && camera.hasBaseline && !camera.calibrating;
+  const reminders = useReminders({
+    skipPosture: cameraJudging && (mode === "camera-only" || (mode === "smart" && camera.reading === "good")),
+    postureWatched: cameraJudging && mode === "camera-only",
+  });
 
   const message = camera.message ?? reminders.message;
   const alertTitle = camera.alertVisible
@@ -84,7 +92,15 @@ export default function PostureBuddy({ children }: PostureBuddyProps) {
           <RemindersSettings reminders={reminders} />
           <NotificationControl status={notifications.status} onEnable={notifications.request} />
         </section>
-        <CameraPanel camera={camera} videoRef={videoRef} />
+        <CameraPanel
+          camera={camera}
+          videoRef={videoRef}
+          mode={mode}
+          onModeChange={setMode}
+          skippedCount={reminders.skippedCount}
+          notificationStatus={notifications.status}
+          onEnableNotifications={notifications.request}
+        />
       </div>
     </div>
   );

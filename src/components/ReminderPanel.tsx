@@ -29,7 +29,9 @@ function statusText(reminders: Reminders): string {
     case "idle":
       return "Press Start when you're ready.";
     case "running":
-      return "I'm watching. Keep that back straight.";
+      return reminders.next === null && reminders.postureWatched
+        ? "The camera is watching. Sit tall!"
+        : "I'm watching. Keep that back straight.";
     case "paused":
       return "Paused. I'll wait for you.";
   }
@@ -37,8 +39,8 @@ function statusText(reminders: Reminders): string {
 
 /** The main card: what is due, the next countdown, and the session buttons. */
 export function ReminderTimer({ reminders }: { reminders: Reminders }) {
-  const { status, next, due, message } = reminders;
-  const upcoming = reminders.active.filter((a) => a !== next && a.timer.status !== "due");
+  const { status, next, due, message, upcoming } = reminders;
+  const cameraOnly = next === null && due.length === 0 && reminders.postureWatched;
 
   return (
     <div className="flex w-full flex-col items-center gap-4">
@@ -77,13 +79,25 @@ export function ReminderTimer({ reminders }: { reminders: Reminders }) {
             " "
           )}
         </p>
-        <p
-          className="font-display text-6xl font-semibold tabular-nums tracking-tight sm:text-7xl"
-          data-testid="countdown"
-        >
-          {next ? formatDuration(next.remainingMs) : due.length > 0 ? "00:00" : "--:--"}
-        </p>
+        {cameraOnly ? (
+          <p className="font-display text-6xl sm:text-7xl" data-testid="countdown" aria-label="Camera watching">
+            <span aria-hidden="true">📷</span>
+          </p>
+        ) : (
+          <p
+            className="font-display text-6xl font-semibold tabular-nums tracking-tight sm:text-7xl"
+            data-testid="countdown"
+          >
+            {next ? formatDuration(next.remainingMs) : due.length > 0 ? "00:00" : "--:--"}
+          </p>
+        )}
       </div>
+
+      {reminders.skipNoteVisible && (
+        <p className="rounded-full bg-good/10 px-4 py-1 text-sm font-bold text-good" data-testid="skip-note">
+          ✓ Skipped a posture reminder — you were sitting well.
+        </p>
+      )}
 
       <p role="status" data-testid="reminder-status" className="min-h-6 text-soft">
         {/* Screen readers also hear the kitten's message, which is only shown visually in the bubble. */}
@@ -118,6 +132,12 @@ export function ReminderTimer({ reminders }: { reminders: Reminders }) {
           </button>
         )}
       </div>
+
+      {reminders.postureWatched && (
+        <p className="w-full px-2 text-left text-sm text-soft" data-testid="posture-watched">
+          <span aria-hidden="true">🧍 </span>Posture: <span aria-hidden="true">📷 </span>the camera is watching
+        </p>
+      )}
 
       {upcoming.length > 0 && (
         <ul className="flex w-full flex-col gap-1 text-sm text-soft" aria-label="Coming up">
