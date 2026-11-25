@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { REMINDER_MESSAGES } from "@/lib/messages";
 import { showNotification } from "@/lib/notifications";
+import { readSetting, storageKey, writeSetting } from "@/lib/storage";
 import {
   DEFAULT_INTERVAL_SEC,
   createInitialState,
@@ -10,30 +11,15 @@ import {
   secondsToMs,
 } from "@/lib/reminder";
 
-export const INTERVAL_STORAGE_KEY = "im-watching:interval-sec";
-export const AUTO_RESTART_STORAGE_KEY = "im-watching:auto-restart";
+const INTERVAL_SETTING = "interval-sec";
+const AUTO_RESTART_SETTING = "auto-restart";
+export const INTERVAL_STORAGE_KEY = storageKey(INTERVAL_SETTING);
+export const AUTO_RESTART_STORAGE_KEY = storageKey(AUTO_RESTART_SETTING);
 
 /** How long the bubble stays up after an automatic restart. */
 export const REMINDER_VISIBLE_MS = 10_000;
 
 const TICK_MS = 1000;
-
-function readStorage(key: string): string | null {
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    // Storage can be blocked (private mode, site settings). Use the defaults.
-    return null;
-  }
-}
-
-function writeStorage(key: string, value: string): void {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // Not saving the choice is fine.
-  }
-}
 
 /**
  * Connects the pure reminder state machine to the browser: a 1-second tick
@@ -67,11 +53,11 @@ export function useReminder() {
   // Saved settings are read after hydration. Reading them during the first
   // render would make the client HTML differ from the server HTML.
   useEffect(() => {
-    const seconds = Number(readStorage(INTERVAL_STORAGE_KEY));
+    const seconds = Number(readSetting(INTERVAL_SETTING));
     if (isIntervalOption(seconds)) {
       dispatch({ type: "setInterval", intervalMs: secondsToMs(seconds) });
     }
-    if (readStorage(AUTO_RESTART_STORAGE_KEY) === "true") {
+    if (readSetting(AUTO_RESTART_SETTING) === "true") {
       dispatch({ type: "setAutoRestart", autoRestart: true });
     }
   }, []);
@@ -117,12 +103,12 @@ export function useReminder() {
   const setIntervalSeconds = useCallback((seconds: number) => {
     if (!isIntervalOption(seconds)) return;
     dispatch({ type: "setInterval", intervalMs: secondsToMs(seconds) });
-    writeStorage(INTERVAL_STORAGE_KEY, String(seconds));
+    writeSetting(INTERVAL_SETTING, String(seconds));
   }, []);
 
   const setAutoRestart = useCallback((autoRestart: boolean) => {
     dispatch({ type: "setAutoRestart", autoRestart });
-    writeStorage(AUTO_RESTART_STORAGE_KEY, String(autoRestart));
+    writeSetting(AUTO_RESTART_SETTING, String(autoRestart));
   }, []);
 
   return {

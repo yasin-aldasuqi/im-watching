@@ -1,28 +1,56 @@
 @import "tailwindcss";
 
+/*
+ * Karamel color tokens. Every text/background pair used in the app was
+ * checked for WCAG contrast (at least 4.5:1) in both themes.
+ */
 :root {
-  --background: #fff8f0;
-  --foreground: #2b1d14;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --bg: #fbf3e6; /* cream page */
+  --surface: #fffaf3; /* cards */
+  --line: #eadbc6; /* borders */
+  --ink: #3a2417; /* main text: espresso */
+  --soft: #6e4f37; /* secondary text */
+  --accent: #93501b; /* caramel: buttons, highlights */
+  --on-accent: #ffffff; /* text on accent */
+  --tint: #f5e2ca; /* light caramel wash */
+  --good: #3f6b2e;
+  --alert: #a8431a;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #1c1512;
-    --foreground: #f5ebe0;
+    --bg: #1c140f; /* dark chocolate */
+    --surface: #281d16;
+    --line: #3e2d22;
+    --ink: #f6eadb;
+    --soft: #cdb39a;
+    --accent: #e8a764;
+    --on-accent: #2a1a0e;
+    --tint: #3a2a1e;
+    --good: #9ccb7a;
+    --alert: #f0905f;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-soft: var(--soft);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-tint: var(--tint);
+  --color-good: var(--good);
+  --color-alert: var(--alert);
+  --font-sans: var(--font-nunito);
+  --font-display: var(--font-fredoka);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-nunito), ui-rounded, system-ui, sans-serif;
 }
 
 /* Kitten animations (see src/components/Kitten.tsx) */
@@ -59,7 +87,7 @@ body {
   animation: kitten-tail-sway 3s ease-in-out infinite;
 }
 
-/* The kitten hops a few times when a reminder is due (see ReminderPanel). */
+/* The kitten hops a few times when a reminder or alert shows (see PostureBuddy). */
 @keyframes kitten-hop {
   0%,
   100% {

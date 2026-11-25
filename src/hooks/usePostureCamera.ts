@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { SLOUCH_MESSAGES } from "@/lib/messages";
 import { showNotification } from "@/lib/notifications";
+import { readSetting, storageKey, writeSetting } from "@/lib/storage";
 import { createPoseDetector, type PoseDetector } from "@/lib/poseDetector";
 import {
   CALIBRATION_SAMPLES,
@@ -10,7 +11,8 @@ import {
   postureReducer,
 } from "@/lib/posture";
 
-export const BASELINE_STORAGE_KEY = "im-watching:posture-baseline";
+const BASELINE_SETTING = "posture-baseline";
+export const BASELINE_STORAGE_KEY = storageKey(BASELINE_SETTING);
 /** 4 checks per second: enough for posture, which changes slowly, and easy on the battery. */
 export const CHECK_INTERVAL_MS = 250;
 /** How long the slouch bubble stays up after an alert. */
@@ -37,20 +39,12 @@ function cameraErrorFrom(error: unknown): CameraError {
 }
 
 function readBaseline(): number | null {
-  try {
-    const value = Number(window.localStorage.getItem(BASELINE_STORAGE_KEY));
-    return isValidBaseline(value) ? value : null;
-  } catch {
-    return null;
-  }
+  const value = Number(readSetting(BASELINE_SETTING));
+  return isValidBaseline(value) ? value : null;
 }
 
 function writeBaseline(value: number): void {
-  try {
-    window.localStorage.setItem(BASELINE_STORAGE_KEY, String(value));
-  } catch {
-    // Not saving is fine. The user can calibrate again.
-  }
+  writeSetting(BASELINE_SETTING, String(value));
 }
 
 /**

@@ -5,7 +5,9 @@ import {
   formatIntervalLabel,
   type ReminderStatus,
 } from "@/lib/reminder";
-import { primaryButton, secondaryButton } from "./buttons";
+import { primaryButton, secondaryButton } from "./styles";
+
+type Reminder = ReturnType<typeof useReminder>;
 
 const STATUS_MESSAGES: Record<ReminderStatus, string> = {
   idle: "Pick an interval and press Start.",
@@ -14,17 +16,20 @@ const STATUS_MESSAGES: Record<ReminderStatus, string> = {
   due: "Fix your posture, then press “I'm sitting tall”.",
 };
 
-/** The timer controls. The state lives in PostureBuddy. */
-export default function ReminderPanel({ reminder }: { reminder: ReturnType<typeof useReminder> }) {
+/** The big countdown, its status, and the main buttons. The state lives in PostureBuddy. */
+export function ReminderTimer({ reminder }: { reminder: Reminder }) {
   const { status, message } = reminder;
 
   return (
-    <section className="flex w-full max-w-md flex-col items-center gap-5" aria-label="Posture reminder">
-      <p className="font-mono text-5xl font-semibold tabular-nums" data-testid="countdown">
+    <div className="flex flex-col items-center gap-4" aria-label="Posture reminder" role="group">
+      <p
+        className="font-display text-6xl font-semibold tabular-nums tracking-tight sm:text-7xl"
+        data-testid="countdown"
+      >
         {formatDuration(reminder.remainingMs)}
       </p>
 
-      <p role="status" data-testid="reminder-status" className="min-h-6 text-stone-600 dark:text-stone-300">
+      <p role="status" data-testid="reminder-status" className="min-h-6 text-soft">
         {/* Screen readers also hear the kitten's message, which is only shown visually in the bubble. */}
         {message && <span className="sr-only">{message} </span>}
         {STATUS_MESSAGES[status]}
@@ -57,11 +62,20 @@ export default function ReminderPanel({ reminder }: { reminder: ReturnType<typeo
           </button>
         )}
       </div>
+    </div>
+  );
+}
 
-      <label className="flex items-center gap-2 text-sm">
-        Remind me every
+/** Interval and auto-restart settings. */
+export function ReminderSettings({ reminder }: { reminder: Reminder }) {
+  const { status } = reminder;
+
+  return (
+    <div className="flex flex-col gap-4 text-left">
+      <label className="flex items-center justify-between gap-3">
+        <span className="font-semibold">Remind me every</span>
         <select
-          className="rounded-md border border-stone-300 bg-transparent px-2 py-1 disabled:opacity-60 dark:border-stone-600"
+          className="rounded-xl border border-line bg-bg px-3 py-1.5 font-semibold disabled:opacity-60"
           value={reminder.intervalSeconds}
           disabled={status !== "idle"}
           onChange={(event) => reminder.setIntervalSeconds(Number(event.target.value))}
@@ -74,23 +88,23 @@ export default function ReminderPanel({ reminder }: { reminder: ReturnType<typeo
         </select>
       </label>
 
-      <div className="flex flex-col items-center gap-1">
-        <label className="flex items-center gap-2 text-sm font-medium">
+      <div className="flex flex-col gap-1">
+        <label className="flex items-center justify-between gap-3">
+          <span className="font-semibold">Restart automatically</span>
           <input
             type="checkbox"
             role="switch"
-            className="h-4 w-4 accent-orange-700"
+            className="h-5 w-5 accent-accent"
             checked={reminder.autoRestart}
             onChange={(event) => reminder.setAutoRestart(event.target.checked)}
           />
-          Restart automatically
         </label>
-        <p className="text-xs text-stone-500 dark:text-stone-400">
+        <p className="text-sm text-soft">
           {reminder.autoRestart
             ? "The next countdown starts right after each reminder."
             : "After each reminder, I wait until you press “I'm sitting tall”."}
         </p>
       </div>
-    </section>
+    </div>
   );
 }

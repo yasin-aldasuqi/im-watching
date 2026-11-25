@@ -1,5 +1,7 @@
 type KittenProps = {
   className?: string;
+  /** For a small decorative copy (like the logo): hidden from screen readers. */
+  decorative?: boolean;
 };
 
 const FUR = "#F28C38";
@@ -14,12 +16,13 @@ const INK = "#3B2A20";
  * Blinking and tail swaying are pure CSS (see globals.css), so this stays
  * a Server Component and ships no JavaScript to the browser.
  */
-export default function Kitten({ className }: KittenProps) {
+export default function Kitten({ className, decorative = false }: KittenProps) {
   return (
     <svg
       viewBox="0 0 200 220"
-      role="img"
-      aria-label="A small orange Siberian kitten watching you"
+      role={decorative ? undefined : "img"}
+      aria-label={decorative ? undefined : "Karamel, a small orange Siberian kitten, watching you"}
+      aria-hidden={decorative ? true : undefined}
       className={className}
     >
       {/* Fluffy tail, behind the body */}
