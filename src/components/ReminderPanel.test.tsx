@@ -6,7 +6,7 @@ import { REMINDER_MESSAGES } from "@/lib/messages";
 import { secondsToMs } from "@/lib/reminder";
 import PostureBuddy, { DUE_TITLE } from "./PostureBuddy";
 
-const PAGE_TITLE = "I'm Watching";
+const PAGE_TITLE = "Karamel";
 const MINUTE = secondsToMs(60);
 // With Math.random() mocked to 0, the first reminder shows message 0 and the
 // next one shows message 1 (the same message never repeats).
@@ -185,6 +185,14 @@ describe("ReminderPanel: intervals", () => {
 
     renderPanel();
     expect(countdown()).toBe("02:00");
+  });
+
+  it("keeps an interval saved before the app was renamed to Karamel", () => {
+    window.localStorage.setItem("im-watching:interval-sec", "120");
+    renderPanel();
+    expect(countdown()).toBe("02:00");
+    expect(window.localStorage.getItem(INTERVAL_STORAGE_KEY)).toBe("120");
+    expect(window.localStorage.getItem("im-watching:interval-sec")).toBeNull();
   });
 
   it("ignores an invalid saved interval and the old minutes-based setting", () => {

@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-6 px-4 py-12 text-center">
       <div className="flex flex-col items-center gap-2">
-        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">I&apos;m Watching</h1>
+        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">Karamel</h1>
         <p className="max-w-md text-lg text-stone-600 dark:text-stone-300">
           Your posture buddy. Sit up tall, I&apos;ve got my eye on you.
         </p>

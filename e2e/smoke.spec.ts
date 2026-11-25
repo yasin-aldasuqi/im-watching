@@ -7,7 +7,7 @@ test("the page works under the Content Security Policy and talks to no other ori
   const response = await page.goto("/");
   expect(response?.headers()["content-security-policy"]).toContain("default-src 'self'");
 
-  await expect(page.getByRole("heading", { name: "I'm Watching" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Karamel" })).toBeVisible();
 
   // If the CSP blocked the app's own scripts, the page would render but not react.
   await page.getByRole("button", { name: "Start" }).click();

@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "I'm Watching",
+  title: "Karamel",
   description: "Your posture buddy. Camera is optional and never leaves your device.",
 };
 

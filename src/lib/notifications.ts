@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-export const NOTIFICATION_TITLE = "I'm Watching 👀";
+export const NOTIFICATION_TITLE = "Karamel 👀";
 
 export type NotificationStatus = "unsupported" | NotificationPermission;
 

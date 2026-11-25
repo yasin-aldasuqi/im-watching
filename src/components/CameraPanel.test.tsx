@@ -9,7 +9,7 @@ import PostureBuddy, { SLOUCH_TITLE } from "./PostureBuddy";
 
 vi.mock("@/lib/poseDetector", () => ({ createPoseDetector: vi.fn() }));
 
-const PAGE_TITLE = "I'm Watching";
+const PAGE_TITLE = "Karamel";
 const CHECK_MS = 250;
 
 // ---- A fake pose model: returns whatever pose the test sets. ----

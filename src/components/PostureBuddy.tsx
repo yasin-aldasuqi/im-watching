@@ -8,8 +8,8 @@ import CameraPanel from "./CameraPanel";
 import NotificationControl from "./NotificationControl";
 import ReminderPanel from "./ReminderPanel";
 
-export const DUE_TITLE = "⏰ Sit up straight! · I'm Watching";
-export const SLOUCH_TITLE = "👀 Caught you slouching! · I'm Watching";
+export const DUE_TITLE = "⏰ Sit up straight! · Karamel";
+export const SLOUCH_TITLE = "👀 Caught you slouching! · Karamel";
 
 type PostureBuddyProps = {
   /** The mascot. Passed in so it can stay a Server Component. */
