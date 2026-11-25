@@ -7,6 +7,7 @@ import { SLOUCH_MESSAGES } from "@/lib/messages";
 import { NOTIFICATION_TITLE } from "@/lib/notifications";
 import { createPoseDetector } from "@/lib/poseDetector";
 import { CALIBRATION_SAMPLES, LANDMARK, SLOUCH_HOLD_MS, type Landmark } from "@/lib/posture";
+import { installAudioMock } from "@/test-utils/browserMocks";
 import PostureBuddy, { SLOUCH_TITLE } from "./PostureBuddy";
 
 vi.mock("@/lib/poseDetector", () => ({ createPoseDetector: vi.fn() }));
@@ -492,5 +493,38 @@ describe("smart camera modes", () => {
     });
     expect(MockNotification.requestPermission).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "Turn on notifications" })).not.toBeInTheDocument();
+  });
+});
+
+describe("ways to remind with the camera", () => {
+  const turnOnSound = () =>
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "How should I remind you?" })).getByRole("switch", {
+        name: /Sound/,
+      }),
+    );
+
+  it("a slouch alert plays the sound too", async () => {
+    const audio = installAudioMock();
+    renderBuddy();
+    turnOnSound();
+    await turnOn();
+    await calibrate();
+    currentPose = SLOUCHED;
+    advance(SLOUCH_HOLD_MS + CHECK_MS);
+    expect(bubble()).toHaveTextContent(SLOUCH_MESSAGES[0]);
+    expect(audio.meows()).toBe(1);
+  });
+
+  it("a skipped posture reminder plays nothing", async () => {
+    const audio = installAudioMock();
+    renderBuddy();
+    turnOnSound();
+    await turnOn();
+    await calibrate();
+    startPostureEvery30s();
+    advance(30_000);
+    expect(screen.getByTestId("skip-note")).toBeInTheDocument();
+    expect(audio.meows()).toBe(0);
   });
 });

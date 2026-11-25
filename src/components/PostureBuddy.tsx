@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useAlertChannels } from "@/hooks/useAlertChannels";
 import { usePostureCamera } from "@/hooks/usePostureCamera";
 import { usePostureMode } from "@/hooks/usePostureMode";
 import { useReminders } from "@/hooks/useReminders";
+import { blinkTitle, type Alert } from "@/lib/alertChannels";
 import { useNotificationPermission } from "@/lib/notifications";
 import type { ReminderConfig } from "@/lib/reminders";
+import { playMeow, unlockAudio } from "@/lib/sound";
+import { speak, useHasLocalVoice } from "@/lib/speech";
+import { showTabDot } from "@/lib/tabIcon";
+import AlertSettings from "./AlertSettings";
 import CameraPanel from "./CameraPanel";
-import NotificationControl from "./NotificationControl";
+import NudgeDialog from "./NudgeDialog";
 import { ReminderTimer, RemindersSettings } from "./ReminderPanel";
 import { card, cardHeading } from "./styles";
 
@@ -18,6 +24,8 @@ export function reminderTitle(config: ReminderConfig): string {
   return config.kind === "posture" ? DUE_TITLE : `⏰ ${config.emoji} ${config.name}! · Karamel`;
 }
 export const SLOUCH_TITLE = "👀 Caught you slouching! · Karamel";
+/** How often the tab title changes while blinking. */
+export const BLINK_MS = 1000;
 
 type PostureBuddyProps = {
   /** The mascot. Passed in so it can stay a Server Component. */
@@ -25,13 +33,24 @@ type PostureBuddyProps = {
 };
 
 /**
- * Owns the reminders, the camera check, and notification permission, and decides
- * what the kitten says. A camera alert wins over a timer reminder, because it
- * is about what the user is doing right now.
+ * Owns the reminders, the camera check, notification permission, and the ways
+ * to remind, and decides what the kitten says. A camera alert wins over a
+ * timer reminder, because it is about what the user is doing right now.
  */
 export default function PostureBuddy({ children }: PostureBuddyProps) {
+  const { channels, update: updateChannels } = useAlertChannels();
+  const hasLocalVoice = useHasLocalVoice();
+  const [nudge, setNudge] = useState<Alert | null>(null);
+
+  /** Runs once per reminder firing or slouch alert. Skipped reminders never get here. */
+  const handleAlert = (alert: Alert) => {
+    if (channels.sound) playMeow(channels.volume);
+    if (channels.speak && hasLocalVoice) speak(alert.message);
+    if (channels.nudge) setNudge(alert);
+  };
+
   // The ref is kept apart from the camera state, so the state can be read during render.
-  const { videoRef, ...camera } = usePostureCamera();
+  const { videoRef, ...camera } = usePostureCamera({ onAlert: handleAlert });
   const { mode, setMode } = usePostureMode();
   const notifications = useNotificationPermission();
 
@@ -40,6 +59,7 @@ export default function PostureBuddy({ children }: PostureBuddyProps) {
   const reminders = useReminders({
     skipPosture: cameraJudging && (mode === "camera-only" || (mode === "smart" && camera.reading === "good")),
     postureWatched: cameraJudging && mode === "camera-only",
+    onAlert: handleAlert,
   });
 
   const message = camera.message ?? reminders.message;
@@ -49,15 +69,41 @@ export default function PostureBuddy({ children }: PostureBuddyProps) {
       ? reminderTitle(reminders.latestVisible.config)
       : null;
 
-  // The tab title is set in one place, so two features never undo each other's change.
+  // The tab title is set in one place, so two features never undo each other's
+  // change. With blinking on, while the user is in another tab, the title
+  // alternates and the tab icon gets a dot; back in the tab, it stays still.
   useEffect(() => {
     if (alertTitle === null) return;
     const previousTitle = document.title;
-    document.title = alertTitle;
-    return () => {
-      document.title = previousTitle;
+    let frame = 0;
+    const show = () => {
+      const blinking = channels.blink && document.hidden;
+      document.title = blinking ? blinkTitle(alertTitle, frame++) : alertTitle;
+      showTabDot(blinking);
     };
-  }, [alertTitle]);
+    show();
+    const id = channels.blink ? window.setInterval(show, BLINK_MS) : undefined;
+    document.addEventListener("visibilitychange", show);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", show);
+      document.title = previousTitle;
+      showTabDot(false);
+    };
+  }, [alertTitle, channels.blink]);
+
+  // Browsers only allow sound after a user interaction, so the first click or
+  // key press on the page unlocks audio while sound is on.
+  useEffect(() => {
+    if (!channels.sound) return;
+    const unlock = () => unlockAudio();
+    document.addEventListener("pointerdown", unlock);
+    document.addEventListener("keydown", unlock);
+    return () => {
+      document.removeEventListener("pointerdown", unlock);
+      document.removeEventListener("keydown", unlock);
+    };
+  }, [channels.sound]);
 
   return (
     <div className="grid w-full max-w-5xl gap-6 lg:grid-cols-2 lg:items-start">
@@ -90,7 +136,27 @@ export default function PostureBuddy({ children }: PostureBuddyProps) {
             My reminders
           </h2>
           <RemindersSettings reminders={reminders} />
-          <NotificationControl status={notifications.status} onEnable={notifications.request} />
+        </section>
+        <section aria-labelledby="alert-settings-heading" className={`${card} flex flex-col gap-4 p-6`}>
+          <h2 id="alert-settings-heading" className={`${cardHeading} text-left`}>
+            How should I remind you?
+          </h2>
+          <AlertSettings
+            channels={channels}
+            onChange={(patch) => {
+              unlockAudio();
+              updateChannels(patch);
+            }}
+            notificationStatus={notifications.status}
+            onEnableNotifications={notifications.request}
+            hasLocalVoice={hasLocalVoice}
+            onTestSound={() => {
+              unlockAudio();
+              playMeow(channels.volume);
+            }}
+            onTestSpeech={() => speak("Hi! I'm Karamel. Sit up tall. 🐾")}
+            onTestNudge={() => setNudge({ title: "🐾 Karamel", message: "This is how a full-screen nudge looks." })}
+          />
         </section>
         <CameraPanel
           camera={camera}
@@ -102,6 +168,7 @@ export default function PostureBuddy({ children }: PostureBuddyProps) {
           onEnableNotifications={notifications.request}
         />
       </div>
+      <NudgeDialog alert={nudge} onClose={() => setNudge(null)} />
     </div>
   );
 }

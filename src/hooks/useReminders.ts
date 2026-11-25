@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import type { Alert } from "@/lib/alertChannels";
 import { showNotification } from "@/lib/notifications";
 import { remainingMs, type ReminderState } from "@/lib/reminder";
 import {
@@ -69,14 +70,16 @@ export function notificationTitle(config: ReminderConfig): string {
  * a 1-second tick while running (and an immediate re-check when the tab is
  * visible again), and one desktop notification per firing.
  */
-type CameraSignals = {
+type ReminderOptions = {
+  /** Called once per firing, for the extra ways to remind (sound, speech, nudge). */
+  onAlert?: (alert: Alert) => void;
   /** Skip the posture reminder if it fires now (smart mode with good posture, or camera-only mode). */
   skipPosture?: boolean;
   /** The camera watches posture instead of the timer (camera-only mode), so hide its countdown. */
   postureWatched?: boolean;
 };
 
-export function useReminders({ skipPosture = false, postureWatched = false }: CameraSignals = {}) {
+export function useReminders({ skipPosture = false, postureWatched = false, onAlert }: ReminderOptions = {}) {
   const [state, dispatch] = useReducer(sessionReducer, undefined, () => createSessionState());
   // Read by the 1-second tick, so the tick uses the latest rendered camera
   // reading without restarting the interval each time the reading changes.
@@ -86,6 +89,10 @@ export function useReminders({ skipPosture = false, postureWatched = false }: Ca
   useEffect(() => {
     skipPostureRef.current = skipPosture;
   }, [skipPosture]);
+  const onAlertRef = useRef(onAlert);
+  useEffect(() => {
+    onAlertRef.current = onAlert;
+  }, [onAlert]);
   // The clock is never read during render (the page is prerendered); every
   // action that starts a countdown sets it first.
   const [now, setNow] = useState(0);
@@ -130,7 +137,8 @@ export function useReminders({ skipPosture = false, postureWatched = false }: Ca
     notificationsRef.current.delete(id);
   }, []);
 
-  // One notification per firing. A new one replaces that reminder's previous one.
+  // One notification (and one onAlert call) per firing. A new notification
+  // replaces that reminder's previous one.
   useEffect(() => {
     for (const config of state.reminders) {
       const timer = state.timers[config.id];
@@ -141,6 +149,7 @@ export function useReminders({ skipPosture = false, postureWatched = false }: Ca
         closeNotification(config.id);
         const notification = showNotification(message, notificationTitle(config));
         if (notification) notificationsRef.current.set(config.id, notification);
+        onAlertRef.current?.({ title: `${config.emoji} ${config.name}`, message });
       }
       seenCountsRef.current.set(config.id, timer.reminderCount);
     }
