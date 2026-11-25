@@ -1,5 +1,7 @@
 import type { RefObject } from "react";
 import type { CameraError, usePostureCamera } from "@/hooks/usePostureCamera";
+import type { PostureMode } from "@/hooks/usePostureMode";
+import type { NotificationStatus } from "@/lib/notifications";
 import { CALIBRATION_SAMPLES } from "@/lib/posture";
 import { card, cardHeading, primaryButton, secondaryButton } from "./styles";
 
@@ -47,13 +49,43 @@ function statusText(camera: Camera): string {
 }
 
 /** The optional camera posture check. The state lives in PostureBuddy. */
+const MODE_OPTIONS: { value: PostureMode; label: string; hint: string }[] = [
+  {
+    value: "smart",
+    label: "Smart",
+    hint: "The posture timer skips its reminder when I can see you're sitting well.",
+  },
+  {
+    value: "camera-only",
+    label: "Camera only",
+    hint: "No posture timer. I only speak up when I catch you slouching.",
+  },
+  {
+    value: "always",
+    label: "Always",
+    hint: "The posture timer reminds you on schedule, even when you sit well.",
+  },
+];
+
+type CameraPanelProps = {
+  camera: Camera;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  mode: PostureMode;
+  onModeChange: (mode: PostureMode) => void;
+  skippedCount: number;
+  notificationStatus: NotificationStatus;
+  onEnableNotifications: () => void;
+};
+
 export default function CameraPanel({
   camera,
   videoRef,
-}: {
-  camera: Camera;
-  videoRef: RefObject<HTMLVideoElement | null>;
-}) {
+  mode,
+  onModeChange,
+  skippedCount,
+  notificationStatus,
+  onEnableNotifications,
+}: CameraPanelProps) {
   const { cameraStatus } = camera;
   const active = cameraStatus === "starting" || cameraStatus === "on";
   const scorePercent = camera.score === null ? null : Math.round(camera.score * 100);
@@ -126,6 +158,47 @@ export default function CameraPanel({
           </button>
         )}
       </div>
+
+      {cameraStatus === "on" && notificationStatus === "default" && (
+        <div className="flex flex-col items-center gap-2 rounded-2xl bg-tint px-4 py-3 text-center text-sm">
+          <p>Want a desktop notification when I catch you slouching, even in another tab?</p>
+          <button type="button" className={`${secondaryButton} text-sm`} onClick={onEnableNotifications}>
+            Turn on notifications
+          </button>
+        </div>
+      )}
+
+      {skippedCount > 0 && (
+        <p className="text-center text-sm text-good" data-testid="skipped-count">
+          Skipped {skippedCount} posture {skippedCount === 1 ? "reminder" : "reminders"} this session because
+          you sat well.
+        </p>
+      )}
+
+      <fieldset className="flex flex-col gap-2 text-left">
+        <legend className="mb-1 font-semibold">When the camera is on</legend>
+        {MODE_OPTIONS.map((option) => (
+          <label
+            key={option.value}
+            className={`flex cursor-pointer gap-3 rounded-2xl border px-3 py-2 ${
+              mode === option.value ? "border-accent bg-tint" : "border-line"
+            }`}
+          >
+            <input
+              type="radio"
+              name="posture-mode"
+              value={option.value}
+              checked={mode === option.value}
+              onChange={() => onModeChange(option.value)}
+              className="mt-1 accent-accent"
+            />
+            <span>
+              <span className="font-bold">{option.label}</span>
+              <span className="block text-sm text-soft">{option.hint}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
     </section>
   );
 }

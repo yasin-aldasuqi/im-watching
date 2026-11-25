@@ -69,8 +69,23 @@ export function notificationTitle(config: ReminderConfig): string {
  * a 1-second tick while running (and an immediate re-check when the tab is
  * visible again), and one desktop notification per firing.
  */
-export function useReminders() {
+type CameraSignals = {
+  /** Skip the posture reminder if it fires now (smart mode with good posture, or camera-only mode). */
+  skipPosture?: boolean;
+  /** The camera watches posture instead of the timer (camera-only mode), so hide its countdown. */
+  postureWatched?: boolean;
+};
+
+export function useReminders({ skipPosture = false, postureWatched = false }: CameraSignals = {}) {
   const [state, dispatch] = useReducer(sessionReducer, undefined, () => createSessionState());
+  // Read by the 1-second tick, so the tick uses the latest rendered camera
+  // reading without restarting the interval each time the reading changes.
+  // The ref is updated after each render, so it can lag the camera by a few
+  // milliseconds, which does not matter for posture.
+  const skipPostureRef = useRef(skipPosture);
+  useEffect(() => {
+    skipPostureRef.current = skipPosture;
+  }, [skipPosture]);
   // The clock is never read during render (the page is prerendered); every
   // action that starts a countdown sets it first.
   const [now, setNow] = useState(0);
@@ -99,7 +114,8 @@ export function useReminders() {
 
   useEffect(() => {
     if (status !== "running") return;
-    const tick = () => dispatch({ type: "tick", now: at(), random: Math.random() });
+    const tick = () =>
+      dispatch({ type: "tick", now: at(), random: Math.random(), skipPosture: skipPostureRef.current });
     const id = window.setInterval(tick, TICK_MS);
     // Background tabs get throttled timers. Re-check as soon as the user is back.
     document.addEventListener("visibilitychange", tick);
@@ -147,11 +163,15 @@ export function useReminders() {
       return { config, timer, remainingMs: remainingMs(timer, now), visible, message: messageFor(config, timer) };
     });
 
-  /** The reminder that fires next (not counting ones waiting for "Done"). */
+  /** True for the posture reminder while the camera watches posture instead of the timer. */
+  const isWatched = (a: ActiveReminder) => postureWatched && a.config.kind === "posture";
+  /** The reminder that fires next (not counting ones waiting for "Done" or watched by the camera). */
   const next =
     active
-      .filter((a) => a.timer.status !== "due")
+      .filter((a) => a.timer.status !== "due" && !isWatched(a))
       .sort((a, b) => a.remainingMs - b.remainingMs)[0] ?? null;
+  /** Other running reminders, for the "Coming up" list. */
+  const upcoming = active.filter((a) => a !== next && a.timer.status !== "due" && !isWatched(a));
   const due = active.filter((a) => a.timer.status === "due");
   /** The newest reminder on screen; its message goes in the speech bubble. */
   const latestVisible =
@@ -166,7 +186,12 @@ export function useReminders() {
     active,
     status,
     next,
+    upcoming,
     due,
+    postureWatched: postureWatched && active.some((a) => a.config.kind === "posture"),
+    skippedCount: state.skippedCount,
+    /** True for a few seconds after a posture reminder was skipped. */
+    skipNoteVisible: state.lastSkippedAt !== null && now - state.lastSkippedAt < REMINDER_VISIBLE_MS,
     latestVisible,
     message: latestVisible?.message ?? null,
     start: () => dispatch({ type: "start", now: at() }),

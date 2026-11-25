@@ -1,6 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALERT_VISIBLE_MS, BASELINE_STORAGE_KEY } from "@/hooks/usePostureCamera";
+import { POSTURE_MODE_STORAGE_KEY } from "@/hooks/usePostureMode";
+import { EYES_MESSAGES, REMINDER_MESSAGES } from "@/lib/messages";
 import { SLOUCH_MESSAGES } from "@/lib/messages";
 import { NOTIFICATION_TITLE } from "@/lib/notifications";
 import { createPoseDetector } from "@/lib/poseDetector";
@@ -83,10 +85,17 @@ async function turnOn() {
   await flush();
 }
 
+/**
+ * Moves the clock forward one camera check at a time, each in its own act().
+ * A real browser re-renders between timer tasks; one big act() would batch
+ * every update until the end, which a real browser never does.
+ */
 function advance(ms: number) {
-  act(() => {
-    vi.advanceTimersByTime(ms);
-  });
+  for (let left = ms; left > 0; left -= CHECK_MS) {
+    act(() => {
+      vi.advanceTimersByTime(Math.min(CHECK_MS, left));
+    });
+  }
 }
 
 function cameraStatus() {
@@ -103,11 +112,14 @@ async function calibrate() {
   advance(CALIBRATION_SAMPLES * CHECK_MS);
 }
 
-function installNotificationMock() {
+function installNotificationMock(permission: NotificationPermission = "granted") {
   const created: { title: string; body?: string }[] = [];
   class MockNotification {
-    static permission: NotificationPermission = "granted";
-    static requestPermission = vi.fn();
+    static permission: NotificationPermission = permission;
+    static requestPermission = vi.fn(async () => {
+      MockNotification.permission = "granted";
+      return MockNotification.permission;
+    });
     onclick: (() => void) | null = null;
     close = vi.fn();
     constructor(title: string, options?: NotificationOptions) {
@@ -115,7 +127,7 @@ function installNotificationMock() {
     }
   }
   vi.stubGlobal("Notification", MockNotification);
-  return created;
+  return { created, MockNotification };
 }
 
 beforeEach(() => {
@@ -163,7 +175,7 @@ describe("camera posture check", () => {
   });
 
   it("calibrates, then alerts after 5 seconds of slouching, then hides the bubble", async () => {
-    const notifications = installNotificationMock();
+    const { created: notifications } = installNotificationMock();
     renderBuddy();
     await turnOn();
     await calibrate();
@@ -341,5 +353,144 @@ describe("camera posture check", () => {
     expect(screen.getByRole("button", { name: "I'm sitting tall" })).toBeInTheDocument();
     expect(bubble()).toHaveTextContent(SLOUCH_MESSAGES[0]);
     expect(document.title).toBe(SLOUCH_TITLE);
+  });
+});
+
+// ---- Smart camera modes ----
+
+function reminderRow(name: string) {
+  return within(screen.getByRole("group", { name }));
+}
+
+/** Posture reminder every 30 seconds, started. */
+function startPostureEvery30s() {
+  fireEvent.change(reminderRow("Posture").getByRole("combobox"), { target: { value: "30" } });
+  fireEvent.click(screen.getByRole("button", { name: "Start" }));
+}
+
+function chooseMode(label: string) {
+  fireEvent.click(screen.getByRole("radio", { name: new RegExp(`^${label}`) }));
+}
+
+const postureReminderShown = () => screen.queryByRole("button", { name: "I'm sitting tall" }) !== null;
+
+describe("smart camera modes", () => {
+  it("smart (default): skips the posture reminder when you sit well, and says so", async () => {
+    const { created: notifications } = installNotificationMock();
+    renderBuddy();
+    expect(screen.getByRole("radio", { name: /^Smart/ })).toBeChecked();
+    await turnOn();
+    await calibrate();
+    startPostureEvery30s();
+
+    advance(30_000);
+    expect(postureReminderShown()).toBe(false);
+    expect(bubble()).not.toBeInTheDocument();
+    expect(notifications).toHaveLength(0);
+    expect(screen.getByTestId("skip-note")).toHaveTextContent("Skipped a posture reminder");
+    expect(screen.getByTestId("countdown")).toHaveTextContent("00:30");
+    expect(screen.getByTestId("skipped-count")).toHaveTextContent("Skipped 1 posture reminder this session");
+
+    advance(30_000);
+    expect(screen.getByTestId("skipped-count")).toHaveTextContent("Skipped 2 posture reminders");
+  });
+
+  it("smart: reminds as usual when the camera cannot see you", async () => {
+    renderBuddy();
+    await turnOn();
+    await calibrate();
+    startPostureEvery30s();
+    currentPose = null;
+    advance(30_000);
+    expect(postureReminderShown()).toBe(true);
+    expect(bubble()).toHaveTextContent(REMINDER_MESSAGES[0]);
+  });
+
+  it("smart: reminds as usual before the camera is calibrated", async () => {
+    renderBuddy();
+    await turnOn();
+    currentPose = STRAIGHT;
+    startPostureEvery30s();
+    advance(30_000);
+    expect(postureReminderShown()).toBe(true);
+  });
+
+  it("camera only: hides the posture countdown, never fires it, and still catches slouching", async () => {
+    renderBuddy();
+    chooseMode("Camera only");
+    await turnOn();
+    await calibrate();
+    startPostureEvery30s();
+    expect(screen.getByTestId("countdown")).toHaveAccessibleName("Camera watching");
+    expect(screen.getByTestId("posture-watched")).toHaveTextContent("the camera is watching");
+
+    advance(90_000);
+    expect(postureReminderShown()).toBe(false);
+
+    currentPose = SLOUCHED;
+    advance(SLOUCH_HOLD_MS + CHECK_MS);
+    expect(bubble()).toHaveTextContent(SLOUCH_MESSAGES[0]);
+
+    // With the camera off, the posture timer is back.
+    fireEvent.click(screen.getByRole("button", { name: "Turn off camera" }));
+    expect(screen.getByTestId("countdown").textContent).toMatch(/^\d\d:\d\d$/);
+    expect(screen.queryByTestId("posture-watched")).not.toBeInTheDocument();
+  });
+
+  it("camera only: keeps the posture timer until the camera is calibrated", async () => {
+    renderBuddy();
+    chooseMode("Camera only");
+    await turnOn();
+    currentPose = STRAIGHT;
+    startPostureEvery30s();
+    // Not calibrated: the camera cannot judge posture yet, so the timer must still work.
+    expect(screen.getByTestId("countdown").textContent).toMatch(/^\d\d:\d\d$/);
+    advance(30_000);
+    expect(postureReminderShown()).toBe(true);
+  });
+
+  it("always: reminds on schedule even when you sit well", async () => {
+    renderBuddy();
+    chooseMode("Always");
+    await turnOn();
+    await calibrate();
+    startPostureEvery30s();
+    advance(30_000);
+    expect(postureReminderShown()).toBe(true);
+    expect(screen.queryByTestId("skip-note")).not.toBeInTheDocument();
+  });
+
+  it("never skips other reminders", async () => {
+    renderBuddy();
+    chooseMode("Camera only");
+    await turnOn();
+    await calibrate();
+    fireEvent.click(reminderRow("Rest your eyes").getByRole("switch", { name: "Rest your eyes on" }));
+    fireEvent.change(reminderRow("Rest your eyes").getByRole("combobox"), { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    advance(30_000);
+    expect(EYES_MESSAGES).toContain(bubble()!.textContent);
+  });
+
+  it("saves the chosen mode", () => {
+    const first = renderBuddy();
+    chooseMode("Camera only");
+    expect(window.localStorage.getItem(POSTURE_MODE_STORAGE_KEY)).toBe("camera-only");
+    first.unmount();
+    renderBuddy();
+    expect(screen.getByRole("radio", { name: /^Camera only/ })).toBeChecked();
+  });
+
+  it("offers notifications when the camera turns on, until they are on", async () => {
+    const { MockNotification } = installNotificationMock("default");
+    renderBuddy();
+    expect(screen.queryByRole("button", { name: "Turn on notifications" })).not.toBeInTheDocument();
+
+    await turnOn();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Turn on notifications" }));
+    });
+    expect(MockNotification.requestPermission).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Turn on notifications" })).not.toBeInTheDocument();
   });
 });
