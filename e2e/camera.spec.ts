@@ -1,4 +1,10 @@
-import { expect, externalLeaks, test } from "./fixtures";
+import {
+  expect,
+  externalLeaks,
+  test,
+  unexpectedCspViolations,
+  unexpectedErrors,
+} from "./fixtures";
 
 // Chromium runs with a fake camera (see playwright.config.ts). It shows a
 // moving test pattern, not a person, so the real model finds nobody.
@@ -40,7 +46,10 @@ test("the camera check runs the real model from our own origin and turns off cle
   expect(await page.locator("video").evaluate((video: HTMLVideoElement) => video.srcObject)).toBeNull();
 
   expect(externalLeaks(watch)).toEqual([]);
-  expect(watch.errors).toEqual([]);
+  // On a slow machine this test can run past 60 s, when MediaPipe's logger tries
+  // to send and the CSP blocks it. That block is expected; anything else is not.
+  expect(unexpectedCspViolations(watch)).toEqual([]);
+  expect(unexpectedErrors(watch)).toEqual([]);
 });
 
 test("nothing leaves the browser while the camera runs, even after a minute", async ({ page, watch }) => {
@@ -69,4 +78,6 @@ test("nothing leaves the browser while the camera runs, even after a minute", as
   console.log("CSP violations:", watch.cspViolations);
 
   expect(externalLeaks(watch)).toEqual([]);
+  expect(unexpectedCspViolations(watch)).toEqual([]);
+  expect(unexpectedErrors(watch)).toEqual([]);
 });

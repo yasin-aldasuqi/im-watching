@@ -13,6 +13,28 @@ export type PageWatch = {
 };
 
 /**
+ * Requests we expect the CSP to block. MediaPipe has a built-in usage logger
+ * that posts to this URL about once a minute while the model is loaded, and it
+ * cannot be turned off. Blocking it is the CSP doing its job, so it is not a
+ * test failure. Anything else blocked or logged as an error still is.
+ */
+export const KNOWN_BLOCKED_URLS = ["https://odml.pa.googleapis.com/v1/log"];
+
+const isKnownBlock = (text: string) => KNOWN_BLOCKED_URLS.some((url) => text.includes(url));
+
+/** console errors, minus the browser's own messages about blocking a known URL. */
+export function unexpectedErrors(watch: PageWatch): string[] {
+  return watch.errors.filter(
+    (error) => !(isKnownBlock(error) && /Content Security Policy/i.test(error)),
+  );
+}
+
+/** CSP violations for anything other than the known, expected blocks. */
+export function unexpectedCspViolations(watch: PageWatch): string[] {
+  return watch.cspViolations.filter((violation) => !isKnownBlock(violation));
+}
+
+/**
  * External requests the CSP did NOT block: in a real browser these would leave
  * the device. (In tests they are aborted by a safety net, so nothing actually
  * leaves even when a protection is broken on purpose.)
