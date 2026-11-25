@@ -57,10 +57,10 @@ export function useNotificationPermission() {
 }
 
 /** Shows a desktop notification if permission was granted. Returns it, or null. */
-export function showNotification(body: string): Notification | null {
+export function showNotification(body: string, title: string = NOTIFICATION_TITLE): Notification | null {
   if (!notificationsSupported() || Notification.permission !== "granted") return null;
   try {
-    const notification = new Notification(NOTIFICATION_TITLE, { body });
+    const notification = new Notification(title, { body });
     notification.onclick = () => {
       window.focus();
       notification.close();

@@ -39,3 +39,11 @@ export function writeSetting(name: string, value: string): void {
     // Not saving is fine. The app falls back to its defaults next time.
   }
 }
+
+export function removeSetting(name: string): void {
+  try {
+    window.localStorage.removeItem(PREFIX + name);
+  } catch {
+    // Nothing to do.
+  }
+}

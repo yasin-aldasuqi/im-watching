@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALERT_VISIBLE_MS, BASELINE_STORAGE_KEY } from "@/hooks/usePostureCamera";
 import { SLOUCH_MESSAGES } from "@/lib/messages";
@@ -326,7 +326,9 @@ describe("camera posture check", () => {
 
   it("shows the camera alert instead of a timer reminder when both are active", async () => {
     renderBuddy();
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "30" } });
+    fireEvent.change(within(screen.getByRole("group", { name: "Posture" })).getByRole("combobox"), {
+      target: { value: "30" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Start" }));
     await turnOn();
     await calibrate();

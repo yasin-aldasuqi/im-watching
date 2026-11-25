@@ -19,6 +19,34 @@ export const REMINDER_MESSAGES = [
   "Posture check! Make me proud. 😼",
 ] as const;
 
+/** Reminder: drink water. */
+export const WATER_MESSAGES = [
+  "Hydration check! Drink some water. 💧",
+  "Sip sip! Your brain will thank you.",
+  "Cats don't love water. You should still drink some.",
+  "Water break! I'll wait right here. 🐾",
+  "Refill that glass. I'm watching. 👀",
+  "Thirsty brains make grumpy humans. Drink up!",
+] as const;
+
+/** Reminder: rest your eyes (20-20-20: every 20 minutes, look 20 feet away for 20 seconds). */
+export const EYES_MESSAGES = [
+  "Look at something far away for 20 seconds. 👀",
+  "Eyes off the screen! Find something far away.",
+  "Blink, blink. Rest your eyes for a moment.",
+  "Look out the window. I'll guard the screen. 😼",
+  "20 seconds, something far away. Go!",
+] as const;
+
+/** Reminder: stand up and stretch. */
+export const STRETCH_MESSAGES = [
+  "Stand up and stretch! 🙆",
+  "Time to unfold yourself. Stretch!",
+  "Cats stretch all day. Your turn.",
+  "Up you get! Roll those shoulders.",
+  "Walk around a bit. I'll keep your seat warm. 🐾",
+] as const;
+
 /** What the kitten says when the camera sees you slouching. */
 export const SLOUCH_MESSAGES = [
   "Caught you slouching. 👀",
