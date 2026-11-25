@@ -1,11 +1,14 @@
-# I'm Watching 🐈
+# Karamel 🐈
 
-[![CI](https://github.com/yasin-aldasuqi/im-watching/actions/workflows/ci.yml/badge.svg)](https://github.com/yasin-aldasuqi/im-watching/actions/workflows/ci.yml)
+[![CI](https://github.com/yasin-aldasuqi/karamel/actions/workflows/ci.yml/badge.svg)](https://github.com/yasin-aldasuqi/karamel/actions/workflows/ci.yml)
 
 Your posture buddy. Camera is optional and never leaves your device.
 
-**I'm Watching** is a small web app where a little orange Siberian kitten keeps an eye on you
-and gently reminds you to fix how you're sitting and straighten your back.
+**Karamel** is a small web app where a little orange Siberian kitten keeps an eye on you and
+gently reminds you to fix how you're sitting and straighten your back.
+
+The app used to be called "I'm Watching". Settings saved under the old name are moved to the new
+`karamel:` keys automatically (see [`src/lib/storage.ts`](src/lib/storage.ts)).
 
 > Status: early development. Periodic posture reminders and the optional camera posture check work.
 
@@ -31,6 +34,9 @@ and gently reminds you to fix how you're sitting and straighten your back.
 - **Optional camera posture check.** Turn on the camera, sit up straight, and press "Set my good
   posture". If you slouch for 5 seconds, the kitten calls you out ("Caught you slouching. 👀"), at
   most once a minute. See [Camera posture check](#camera-posture-check).
+- **Warm caramel design** with light and dark themes that follow your system. Every text and
+  background pair meets WCAG contrast (at least 4.5:1). Fonts are self-hosted, so the strict CSP
+  stays unchanged.
 - The kitten blinks and sways its tail. All animations stop when your system asks for reduced motion.
 
 ## How the timer works
