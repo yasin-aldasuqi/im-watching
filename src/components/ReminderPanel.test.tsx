@@ -156,12 +156,12 @@ describe("ReminderPanel: manual mode (default)", () => {
 });
 
 describe("ReminderPanel: intervals", () => {
-  it("offers 30 seconds up to 30 minutes", () => {
+  it("offers 30 seconds up to 2 hours", () => {
     renderPanel();
     const labels = screen.getAllByRole("option").map((option) => option.textContent);
     expect(labels[0]).toBe("30 seconds");
     expect(labels).toContain("1 minute");
-    expect(labels.at(-1)).toBe("30 minutes");
+    expect(labels.at(-1)).toBe("2 hours");
   });
 
   it("runs a 30-second reminder", () => {

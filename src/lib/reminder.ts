@@ -10,10 +10,12 @@
  * fall behind. With a deadline, a late tick still computes the right result.
  */
 
-import { pickMessageIndex } from "./messages";
+import { REMINDER_MESSAGES, pickMessageIndex } from "./messages";
 
-/** Interval choices, in seconds: 30 seconds up to 30 minutes. */
-export const INTERVAL_OPTIONS_SEC = [30, 60, 120, 300, 600, 900, 1200, 1800] as const;
+/** Interval choices, in seconds: 30 seconds up to 2 hours. */
+export const INTERVAL_OPTIONS_SEC = [
+  30, 60, 120, 300, 600, 900, 1200, 1800, 2700, 3600, 5400, 7200,
+] as const;
 export const DEFAULT_INTERVAL_SEC = 1800;
 
 export function secondsToMs(seconds: number): number {
@@ -24,11 +26,13 @@ export function isIntervalOption(seconds: number): boolean {
   return (INTERVAL_OPTIONS_SEC as readonly number[]).includes(seconds);
 }
 
-/** "30 seconds", "1 minute", "5 minutes". */
+/** "30 seconds", "1 minute", "45 minutes", "1 hour", "1.5 hours". */
 export function formatIntervalLabel(seconds: number): string {
   if (seconds < 60) return `${seconds} seconds`;
   const minutes = seconds / 60;
-  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+  if (minutes < 60) return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+  const hours = minutes / 60;
+  return hours === 1 ? "1 hour" : `${hours} hours`;
 }
 
 type BaseState = {
@@ -57,7 +61,8 @@ export type ReminderAction =
   | { type: "start"; now: number }
   | { type: "pause"; now: number }
   | { type: "resume"; now: number }
-  | { type: "tick"; now: number; random: number }
+  /** `messageCount`: how many messages this reminder has (defaults to the posture list). */
+  | { type: "tick"; now: number; random: number; messageCount?: number }
   | { type: "acknowledge"; now: number }
   | { type: "reset" }
   | { type: "setInterval"; intervalMs: number }
@@ -108,7 +113,11 @@ export function reminderReducer(state: ReminderState, action: ReminderAction): R
         ...base(state),
         reminderCount: state.reminderCount + 1,
         lastReminderAt: action.now,
-        messageIndex: pickMessageIndex(state.messageIndex, action.random),
+        messageIndex: pickMessageIndex(
+          state.messageIndex,
+          action.random,
+          action.messageCount ?? REMINDER_MESSAGES.length,
+        ),
       };
       if (state.autoRestart) {
         // The next deadline counts from now, not from the old deadline. After a
@@ -161,12 +170,14 @@ export function remainingMs(state: ReminderState, now: number): number {
 }
 
 /**
- * Formats milliseconds as "MM:SS". Seconds are rounded up, so the display
- * shows "00:00" only once the time is really up.
+ * Formats milliseconds as "MM:SS", or "H:MM:SS" from one hour up. Seconds are
+ * rounded up, so the display shows "00:00" only once the time is really up.
  */
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.ceil(Math.max(0, ms) / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  const mmss = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return hours > 0 ? `${hours}:${mmss}` : mmss;
 }

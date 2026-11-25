@@ -85,6 +85,18 @@ describe("reminderReducer", () => {
     expect(reminderReducer(next, { type: "tick", now: back + 1000, random: 0 })).toBe(next);
   });
 
+  it("picks from the reminder's own number of messages", () => {
+    let state = running(T0 + INTERVAL, { autoRestart: true });
+    let now = T0 + INTERVAL;
+    const seen = new Set<number>();
+    for (let i = 0; i < 30; i++) {
+      state = reminderReducer(state, { type: "tick", now, random: (i * 0.37) % 1, messageCount: 3 });
+      seen.add(state.messageIndex!);
+      now += INTERVAL;
+    }
+    expect([...seen].sort()).toEqual([0, 1, 2]);
+  });
+
   it("never picks the same message twice in a row", () => {
     let state = running(T0 + INTERVAL, { autoRestart: true });
     let now = T0 + INTERVAL;
@@ -177,6 +189,9 @@ describe("formatDuration", () => {
   it.each([
     [secondsToMs(1800), "30:00"],
     [secondsToMs(30), "00:30"],
+    [secondsToMs(3600), "1:00:00"],
+    [secondsToMs(5400) - 500, "1:30:00"],
+    [secondsToMs(3599), "59:59"],
     [59_001, "01:00"],
     [1_500, "00:02"],
     [1, "00:01"],
@@ -188,11 +203,12 @@ describe("formatDuration", () => {
 });
 
 describe("interval options", () => {
-  it("go from 30 seconds to 30 minutes", () => {
+  it("go from 30 seconds to 2 hours", () => {
     expect(isIntervalOption(30)).toBe(true);
     expect(isIntervalOption(1800)).toBe(true);
+    expect(isIntervalOption(7200)).toBe(true);
     expect(isIntervalOption(15)).toBe(false);
-    expect(isIntervalOption(3600)).toBe(false);
+    expect(isIntervalOption(10800)).toBe(false);
   });
 
   it.each([
@@ -200,6 +216,9 @@ describe("interval options", () => {
     [60, "1 minute"],
     [300, "5 minutes"],
     [1800, "30 minutes"],
+    [3600, "1 hour"],
+    [5400, "1.5 hours"],
+    [7200, "2 hours"],
   ])("labels %d seconds as %s", (seconds, label) => {
     expect(formatIntervalLabel(seconds)).toBe(label);
   });
