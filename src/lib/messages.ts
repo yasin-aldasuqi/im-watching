@@ -19,15 +19,31 @@ export const REMINDER_MESSAGES = [
   "Posture check! Make me proud. 😼",
 ] as const;
 
+/** What the kitten says when the camera sees you slouching. */
+export const SLOUCH_MESSAGES = [
+  "Caught you slouching. 👀",
+  "I saw that. Sit up.",
+  "Your back just did a question mark. Fix it.",
+  "Slouch detected. I'm judging you a little.",
+  "Head up! You're melting into the chair.",
+  "Hey! Shoulders back, chin up. 😼",
+  "That's not the posture we agreed on.",
+  "I'm watching… and that's a slouch.",
+] as const;
+
 /**
  * Picks the index of the next message. It never returns `previous`, so the
  * same message never shows twice in a row.
  *
  * @param previous index of the last message, or null if there was none
  * @param random a number in [0, 1), for example from Math.random()
+ * @param count how many messages there are to choose from
  */
-export function pickMessageIndex(previous: number | null, random: number): number {
-  const count = REMINDER_MESSAGES.length;
+export function pickMessageIndex(
+  previous: number | null,
+  random: number,
+  count: number = REMINDER_MESSAGES.length,
+): number {
   const r = Math.min(Math.max(random, 0), 0.999999);
 
   if (previous === null || previous < 0 || previous >= count) {

@@ -1,14 +1,10 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  AUTO_RESTART_STORAGE_KEY,
-  DUE_TITLE,
-  INTERVAL_STORAGE_KEY,
-  NOTIFICATION_TITLE,
-} from "@/hooks/useReminder";
+import { AUTO_RESTART_STORAGE_KEY, INTERVAL_STORAGE_KEY } from "@/hooks/useReminder";
+import { NOTIFICATION_TITLE } from "@/lib/notifications";
 import { REMINDER_MESSAGES } from "@/lib/messages";
 import { secondsToMs } from "@/lib/reminder";
-import ReminderPanel from "./ReminderPanel";
+import PostureBuddy, { DUE_TITLE } from "./PostureBuddy";
 
 const PAGE_TITLE = "I'm Watching";
 const MINUTE = secondsToMs(60);
@@ -19,9 +15,9 @@ const SECOND_MESSAGE = REMINDER_MESSAGES[1];
 
 function renderPanel() {
   return render(
-    <ReminderPanel>
+    <PostureBuddy>
       <svg data-testid="kitten" />
-    </ReminderPanel>,
+    </PostureBuddy>,
   );
 }
 
@@ -99,8 +95,8 @@ describe("ReminderPanel: manual mode (default)", () => {
     advance(30 * MINUTE - 1000);
     expect(countdown()).toBe("00:00");
     expect(bubble()).toHaveTextContent(FIRST_MESSAGE);
-    expect(screen.getByRole("status")).toHaveTextContent(FIRST_MESSAGE);
-    expect(screen.getByRole("status")).toHaveTextContent("Fix your posture");
+    expect(screen.getByTestId("reminder-status")).toHaveTextContent(FIRST_MESSAGE);
+    expect(screen.getByTestId("reminder-status")).toHaveTextContent("Fix your posture");
     expect(document.title).toBe(DUE_TITLE);
 
     // It keeps waiting for the user, however long it takes.
