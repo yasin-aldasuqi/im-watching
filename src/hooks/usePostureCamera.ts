@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Alert } from "@/lib/alertChannels";
 import { SLOUCH_MESSAGES } from "@/lib/messages";
-import { showNotification } from "@/lib/notifications";
+import { showNotification, type NotificationHandle } from "@/lib/notifications";
 import { readSetting, storageKey, writeSetting } from "@/lib/storage";
 import { createPoseDetector, type PoseDetector } from "@/lib/poseDetector";
 import {
@@ -66,7 +66,7 @@ export function usePostureCamera({ onAlert }: { onAlert?: (alert: Alert) => void
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<PoseDetector | null>(null);
-  const notificationRef = useRef<Notification | null>(null);
+  const notificationRef = useRef<NotificationHandle | null>(null);
   const onAlertRef = useRef(onAlert);
   useEffect(() => {
     onAlertRef.current = onAlert;

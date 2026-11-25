@@ -50,6 +50,11 @@ const nextConfig: NextConfig = {
         source: "/(.*)",
         headers: [{ key: "Content-Security-Policy", value: contentSecurityPolicy }],
       },
+      {
+        // The service worker: always check for a new version, never use a stale copy.
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+      },
     ];
   },
 };

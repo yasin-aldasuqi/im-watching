@@ -1,3 +1,4 @@
+import { InstallButton } from "@/components/AppShell";
 import Kitten from "@/components/Kitten";
 import PostureBuddy from "@/components/PostureBuddy";
 
@@ -12,6 +13,7 @@ export default function Home() {
           </h1>
           <p className="text-sm text-soft">Your posture buddy. Sit up tall, I&apos;ve got my eye on you.</p>
         </div>
+        <InstallButton />
       </header>
 
       <main className="flex w-full flex-1 justify-center">
