@@ -175,3 +175,56 @@ describe("custom reminders", () => {
     expect(act(state, { type: "remove", id: "posture" })).toBe(state);
   });
 });
+
+describe("skipping the posture reminder (smart camera modes)", () => {
+  it("restarts posture quietly when skipPosture is set, and counts the skip", () => {
+    let state = act(createSessionState(), { type: "start", now: T0 });
+    state = act(state, { type: "tick", now: T0 + 30 * MIN, random: 0, skipPosture: true });
+    expect(state.timers.posture).toMatchObject({ status: "running", endsAt: T0 + 60 * MIN, reminderCount: 0 });
+    expect(state.skippedCount).toBe(1);
+    expect(state.lastSkippedAt).toBe(T0 + 30 * MIN);
+  });
+
+  it("reminds as usual when skipPosture is not set", () => {
+    let state = act(createSessionState(), { type: "start", now: T0 });
+    state = act(state, { type: "tick", now: T0 + 30 * MIN, random: 0, skipPosture: false });
+    expect(state.timers.posture).toMatchObject({ status: "due", reminderCount: 1 });
+    expect(state.skippedCount).toBe(0);
+  });
+
+  it("only skips at the moment posture would fire, not earlier", () => {
+    let state = act(createSessionState(), { type: "start", now: T0 });
+    const before = state.timers.posture;
+    state = act(state, { type: "tick", now: T0 + 10 * MIN, random: 0, skipPosture: true });
+    expect(state.timers.posture).toBe(before);
+    expect(state.skippedCount).toBe(0);
+  });
+
+  it("never skips other reminders", () => {
+    let state = act(postureAndWater(), { type: "start", now: T0 });
+    state = act(state, { type: "tick", now: T0 + 45 * MIN, random: 0, skipPosture: true });
+    expect(state.timers.water.reminderCount).toBe(1);
+  });
+
+  it("keeps the posture message history when it skips", () => {
+    let state = act(
+      createSessionState(),
+      { type: "update", id: "posture", patch: { autoRestart: true }, now: T0 },
+      { type: "start", now: T0 },
+      { type: "tick", now: T0 + 30 * MIN, random: 0 },
+    );
+    const firstMessage = state.timers.posture.messageIndex;
+    state = act(state, { type: "tick", now: T0 + 60 * MIN, random: 0, skipPosture: true });
+    expect(state.timers.posture.messageIndex).toBe(firstMessage);
+    state = act(state, { type: "tick", now: T0 + 90 * MIN, random: 0 });
+    // The next real reminder still avoids repeating the last message shown.
+    expect(state.timers.posture.messageIndex).not.toBe(firstMessage);
+  });
+
+  it("reset clears the skip count", () => {
+    let state = act(createSessionState(), { type: "start", now: T0 });
+    state = act(state, { type: "tick", now: T0 + 30 * MIN, random: 0, skipPosture: true }, { type: "reset" });
+    expect(state.skippedCount).toBe(0);
+    expect(state.lastSkippedAt).toBeNull();
+  });
+});
