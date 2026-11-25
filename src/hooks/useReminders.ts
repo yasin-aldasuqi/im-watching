@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Alert } from "@/lib/alertChannels";
-import { showNotification } from "@/lib/notifications";
+import { showNotification, type NotificationHandle } from "@/lib/notifications";
 import { remainingMs, type ReminderState } from "@/lib/reminder";
 import {
   createCustomReminder,
@@ -96,7 +96,7 @@ export function useReminders({ skipPosture = false, postureWatched = false, onAl
   // The clock is never read during render (the page is prerendered); every
   // action that starts a countdown sets it first.
   const [now, setNow] = useState(0);
-  const notificationsRef = useRef(new Map<string, Notification>());
+  const notificationsRef = useRef(new Map<string, NotificationHandle>());
   const seenCountsRef = useRef(new Map<string, number>());
 
   const at = useCallback(() => {

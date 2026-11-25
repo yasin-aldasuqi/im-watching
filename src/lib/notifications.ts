@@ -56,8 +56,36 @@ export function useNotificationPermission() {
   return { status, request };
 }
 
-/** Shows a desktop notification if permission was granted. Returns it, or null. */
-export function showNotification(body: string, title: string = NOTIFICATION_TITLE): Notification | null {
+/** A shown notification that can be closed again. */
+export type NotificationHandle = { close: () => void };
+
+let nextTag = 0;
+
+/**
+ * Android browsers do not allow `new Notification()` from a page; only a
+ * service worker can show one. When there is a worker, ask it instead.
+ * The tag lets us find the notification again to close it.
+ */
+function showFromServiceWorker(title: string, body: string): NotificationHandle | null {
+  const worker = typeof navigator !== "undefined" ? navigator.serviceWorker : undefined;
+  if (!worker?.controller) return null;
+  const tag = `karamel-${Date.now()}-${nextTag++}`;
+  const shown = worker.ready
+    .then((registration) => registration.showNotification(title, { body, tag, icon: "/icons/icon-192.png" }))
+    .catch(() => {});
+  return {
+    close: () => {
+      void shown
+        .then(() => worker.ready)
+        .then((registration) => registration.getNotifications({ tag }))
+        .then((list) => list.forEach((notification) => notification.close()))
+        .catch(() => {});
+    },
+  };
+}
+
+/** Shows a desktop notification if permission was granted. Returns a handle, or null. */
+export function showNotification(body: string, title: string = NOTIFICATION_TITLE): NotificationHandle | null {
   if (!notificationsSupported() || Notification.permission !== "granted") return null;
   try {
     const notification = new Notification(title, { body });
@@ -67,8 +95,7 @@ export function showNotification(body: string, title: string = NOTIFICATION_TITL
     };
     return notification;
   } catch {
-    // Some mobile browsers only allow notifications from a service worker.
-    // The in-page reminder still works.
-    return null;
+    // Without a service worker, the in-page reminder still works.
+    return showFromServiceWorker(title, body);
   }
 }

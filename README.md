@@ -11,6 +11,8 @@ The app used to be called "I'm Watching". Settings saved under the old name are 
 `karamel:` keys automatically (see [`src/lib/storage.ts`](src/lib/storage.ts)).
 
 > Status: early development. Periodic posture reminders and the optional camera posture check work.
+> Karamel can be installed as an app on Windows, Linux, macOS, Android, and iPhone, and opens
+> without internet after the first visit.
 
 ## Features
 
@@ -63,6 +65,50 @@ The app used to be called "I'm Watching". Settings saved under the old name are 
   background pair meets WCAG contrast (at least 4.5:1). Fonts are self-hosted, so the strict CSP
   stays unchanged.
 - The kitten blinks and sways its tail. All animations stop when your system asks for reduced motion.
+- **Installable app (PWA)** that also works offline. See [Install as an app](#install-as-an-app).
+
+## Install as an app
+
+Karamel is a Progressive Web App (PWA): the browser installs it like an app, with its own window,
+icon, and entry in your app list. No app store and no Mac needed.
+
+| Where | How |
+| --- | --- |
+| Chrome or Edge (Windows, Linux, macOS, ChromeOS) | Press **Install Karamel** at the top of the page, or the install icon in the address bar |
+| Chrome on Android | Menu ⋮ → **Add to home screen** / **Install app** (or the **Install Karamel** button) |
+| Safari on iPhone or iPad | Share → **Add to Home Screen** |
+| Safari on macOS | File → **Add to Dock** |
+| Firefox | Desktop Firefox cannot install web apps; on Android use Menu → **Install** |
+
+Installing needs HTTPS (or `localhost`). To try it locally, use the production build, because the
+service worker is turned off in development:
+
+```bash
+npm run build && npm start
+```
+
+How it works:
+
+- **Manifest** ([`src/app/manifest.ts`](src/app/manifest.ts)): name, colors, and icons. The PNG
+  icons, including a padded "maskable" one for Android's round icon shapes and the iOS icon, are
+  made from the SVG by [`scripts/generate-icons.sh`](scripts/generate-icons.sh).
+- **Service worker** ([`public/sw.js`](public/sw.js)), written by hand, without a library, so
+  every line is easy to read. It saves a copy of the app so it opens offline:
+  - Files under `/_next/static/` have a content hash in their name and never change, so they are
+    served from the saved copy first.
+  - Everything else (the page, the pose model, the MediaPipe runtime) is fetched from the network
+    first, so updates are always picked up, and the saved copy is used only when offline.
+  - On install it also saves the scripts the page points to, because the page loaded them before
+    the worker existed.
+  - It handles only requests to the app's own origin. Requests to other origins are not touched,
+    so the CSP still blocks them; an e2e test checks this and also proves it would see a leak if
+    the CSP were off.
+- **Notifications on Android**: Android browsers do not allow a page to create a notification
+  directly, only a service worker. Karamel falls back to the worker there, so reminders can still
+  notify you. Clicking a notification brings the Karamel window to the front.
+- **No push notifications, on purpose.** Web push needs a server and sends every message through
+  the browser maker's push service (Google, Mozilla, or Apple). That would break "never leaves your
+  device", so reminders still need the Karamel window to be open (it can be minimized).
 
 ## How the timer works
 
@@ -211,6 +257,11 @@ Unit and component tests use [Vitest](https://vitest.dev) and React Testing Libr
 - `src/components/AlertChannels.test.tsx`: each way to remind with fakes for Web Audio, speech,
   and `<dialog>` (which jsdom does not have): sound and volume, offline-only speech, the nudge with
   focus and Escape, blinking only in a hidden tab, and saving the choices.
+- `src/app/manifest.test.ts`: the manifest describes an installable app, and every icon exists
+  with the size it claims (read from the PNG header).
+- `src/lib/pwa.test.tsx`: the Install button appears only when the browser offers installing, opens
+  the install window once, and hides after installing; and on Android-like browsers notifications
+  go through the service worker, and closing one closes only that one.
 - `src/lib/posture.test.ts`: the posture measurement (aspect ratio, distance from the camera,
   hidden points), calibration, hysteresis, the 5-second hold, and the 60-second cooldown.
 - `src/lib/poseModel.test.ts`: the committed model file matches its pinned SHA-256, and the
@@ -228,6 +279,10 @@ End-to-end tests use [Playwright](https://playwright.dev) with Chromium and a fa
 - `e2e/smoke.spec.ts`: the page works under the CSP and makes no external requests.
 - `e2e/camera.spec.ts`: the real model loads from the app's own origin and runs, the camera turns
   off cleanly, and over more than a minute of camera use nothing leaves the browser.
+- `e2e/pwa.spec.ts`: the manifest and icons are served, Chrome's own installability check
+  finds no errors, the app opens and runs with the network off after one visit, and a page
+  controlled by the service worker still cannot send data to another origin (with a control test
+  that switches the CSP off and checks that the leak is then detected).
 
 ## Continuous integration
 
@@ -241,15 +296,19 @@ must pass before merging.
 
 ## Known limitations
 
-- **The tab must stay open.** Closing the tab stops the reminders. There is no service worker or
-  push server.
+- **The app must stay open.** Closing the tab (or the installed app's window) stops the reminders.
+  A minimized window keeps working. There is no push server, on purpose (see
+  [Install as an app](#install-as-an-app)). A tray app would need a desktop wrapper such as Tauri.
 - **Background tabs can be up to about a minute late.** Browsers throttle timers in background
   tabs. The reminder fires on the next allowed tick, or right away when you return to the tab.
   With short intervals such as 30 seconds, this means a background tab may remind you about once a
   minute instead of every 30 seconds.
-- **Notifications may not work on mobile.** Some mobile browsers only allow notifications from a
-  service worker. The in-page reminder still works.
-- **No sound.**
+- **Mobile is not tested on a real device.** The Android notification fallback is tested with a
+  fake service worker, and installing was checked with Chrome's installability check on desktop,
+  not on a phone or iPhone. Phones also pause background pages much more than desktops, so
+  reminders on a phone are only reliable while Karamel is on screen.
+- **The camera works offline only after it was used once online**, because the pose model (about
+  6 MB) is saved the first time it is downloaded, not on install.
 - **Speech depends on the browser's voices.** If the browser has no offline voice (common in
   Chrome on some systems), the kitten cannot speak.
 - **Sound needs one interaction first.** If you never click or press a key on the page after
