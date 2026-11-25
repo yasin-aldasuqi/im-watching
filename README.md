@@ -31,9 +31,25 @@ The app used to be called "I'm Watching". Settings saved under the old name are 
     posture), so you don't come back to a pile of reminders after a break.
   - On: the next countdown starts right away, and the bubble hides after 10 seconds. After a long
     time away you get one reminder, not one for every missed cycle.
-- **Optional desktop notifications** with the reminder's name in the title and its message in the
-  body. Permission is requested only when you click "Enable notifications". Each reminder's new
-  notification replaces its previous one. The in-page reminder works without notifications.
+- **Choose how you're reminded** ("How should I remind you?"), for every reminder and slouch alert:
+  - 💬 Speech bubble (always on).
+  - 🔔 Desktop notifications, with the reminder's name in the title. Permission is requested only
+    when you click "Enable notifications". Each reminder's new notification replaces its previous
+    one.
+  - 🔊 Sound: a short meow with a volume slider. It is synthesized with the Web Audio API, so there
+    is no audio file to download or license. Browsers only allow sound after you interact with the
+    page, so your first click or key press unlocks it.
+  - 🗣️ Kitten speaks: the message is read out loud, without its emoji, **only with an offline
+    voice**. Some browser voices (for example Chrome's "Google" voices) run on a server and would
+    send the message text there. The CSP cannot block that, because the browser sends it, so those
+    voices are never used. Without an offline voice the option is turned off and says why.
+  - 🖥️ Full-screen nudge: a native `<dialog>` that covers the page until you press "Got it" (or
+    Escape).
+  - ✨ Blinking tab: while you're in another tab, the title alternates and the tab icon gets a red
+    dot. It stops when you come back.
+
+  Sound, speech, and the nudge start off, because they can be disruptive; blinking starts on.
+  Each has a test button where it makes sense. Skipped posture reminders trigger none of them.
 - **Local only.** Your reminders are saved in your browser's `localStorage`. Nothing is sent to a
   server. Saved data is treated as untrusted input and cleaned before use (length and count limits,
   valid intervals, safe ids), so corrupted data falls back to the defaults instead of crashing.
@@ -190,6 +206,11 @@ Unit and component tests use [Vitest](https://vitest.dev) and React Testing Libr
   `Math.random()`. They cover one and several reminders, pause and resume, a throttled background
   tab catching up, editing messages, adding and deleting a custom reminder, saving, migration,
   corrupted data, React Strict Mode, and notifications (the Notification API is mocked).
+- `src/lib/alertChannels.test.ts`: cleaning saved alert settings, removing emoji for speech,
+  never picking an online voice, title blinking, and the meow shape.
+- `src/components/AlertChannels.test.tsx`: each way to remind with fakes for Web Audio, speech,
+  and `<dialog>` (which jsdom does not have): sound and volume, offline-only speech, the nudge with
+  focus and Escape, blinking only in a hidden tab, and saving the choices.
 - `src/lib/posture.test.ts`: the posture measurement (aspect ratio, distance from the camera,
   hidden points), calibration, hysteresis, the 5-second hold, and the 60-second cooldown.
 - `src/lib/poseModel.test.ts`: the committed model file matches its pinned SHA-256, and the
@@ -229,6 +250,10 @@ must pass before merging.
 - **Notifications may not work on mobile.** Some mobile browsers only allow notifications from a
   service worker. The in-page reminder still works.
 - **No sound.**
+- **Speech depends on the browser's voices.** If the browser has no offline voice (common in
+  Chrome on some systems), the kitten cannot speak.
+- **Sound needs one interaction first.** If you never click or press a key on the page after
+  loading it, browsers block the meow.
 - **Real-browser tests cover the camera, not the reminder flow.** The reminder cycle and real
   notifications are tested in jsdom and by hand, not by Playwright.
 - **Camera detection accuracy is only tested by hand.** The fake camera in the e2e tests shows a

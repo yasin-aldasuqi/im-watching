@@ -1,5 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
-import { readSetting, storageKey, writeSetting } from "@/lib/storage";
+import { createSettingStore } from "@/lib/settingStore";
 
 /**
  * What the posture timer does while the camera is on and calibrated:
@@ -12,46 +11,23 @@ export type PostureMode = "smart" | "camera-only" | "always";
 export const POSTURE_MODES: readonly PostureMode[] = ["smart", "camera-only", "always"];
 export const DEFAULT_POSTURE_MODE: PostureMode = "smart";
 
-const MODE_SETTING = "posture-mode";
-export const POSTURE_MODE_STORAGE_KEY = storageKey(MODE_SETTING);
-
 function isPostureMode(value: unknown): value is PostureMode {
   return typeof value === "string" && (POSTURE_MODES as readonly string[]).includes(value);
 }
 
-// The saved mode lives in localStorage, outside React, so it is read with
-// useSyncExternalStore. The server snapshot is the default, which keeps the
-// server HTML and the first client render the same.
-const listeners = new Set<() => void>();
+const store = createSettingStore<PostureMode>({
+  name: "posture-mode",
+  defaultValue: DEFAULT_POSTURE_MODE,
+  parse: (raw) => (isPostureMode(raw) ? raw : DEFAULT_POSTURE_MODE),
+  serialize: (mode) => mode,
+});
 
-function subscribe(onChange: () => void): () => void {
-  listeners.add(onChange);
-  // Another tab changed the setting.
-  const onStorage = (event: StorageEvent) => {
-    if (event.key === POSTURE_MODE_STORAGE_KEY) onChange();
-  };
-  window.addEventListener("storage", onStorage);
-  return () => {
-    listeners.delete(onChange);
-    window.removeEventListener("storage", onStorage);
-  };
-}
-
-function getSnapshot(): PostureMode {
-  const saved = readSetting(MODE_SETTING);
-  return isPostureMode(saved) ? saved : DEFAULT_POSTURE_MODE;
-}
-
-function getServerSnapshot(): PostureMode {
-  return DEFAULT_POSTURE_MODE;
-}
+export const POSTURE_MODE_STORAGE_KEY = store.key;
 
 export function usePostureMode() {
-  const mode = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const setMode = useCallback((next: PostureMode) => {
-    if (!isPostureMode(next)) return;
-    writeSetting(MODE_SETTING, next);
-    listeners.forEach((listener) => listener());
-  }, []);
+  const [mode, setValue] = store.useSetting();
+  const setMode = (next: PostureMode) => {
+    if (isPostureMode(next)) setValue(next);
+  };
   return { mode, setMode };
 }

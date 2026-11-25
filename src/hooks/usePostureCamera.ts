@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import type { Alert } from "@/lib/alertChannels";
 import { SLOUCH_MESSAGES } from "@/lib/messages";
 import { showNotification } from "@/lib/notifications";
 import { readSetting, storageKey, writeSetting } from "@/lib/storage";
@@ -54,7 +55,9 @@ function writeBaseline(value: number): void {
  * this tab. They are never drawn, stored, or sent anywhere. Only the
  * calibrated baseline (one number) is saved, in localStorage.
  */
-export function usePostureCamera() {
+export const SLOUCH_ALERT_TITLE = "👀 Caught you slouching";
+
+export function usePostureCamera({ onAlert }: { onAlert?: (alert: Alert) => void } = {}) {
   const [state, dispatch] = useReducer(postureReducer, null, () => createPostureState());
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>("off");
   const [cameraError, setCameraError] = useState<CameraError | null>(null);
@@ -64,6 +67,10 @@ export function usePostureCamera() {
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<PoseDetector | null>(null);
   const notificationRef = useRef<Notification | null>(null);
+  const onAlertRef = useRef(onAlert);
+  useEffect(() => {
+    onAlertRef.current = onAlert;
+  }, [onAlert]);
   // Goes up on every start and stop, so a start that is still in progress
   // knows it was cancelled and must not turn the camera on.
   const runIdRef = useRef(0);
@@ -184,6 +191,7 @@ export function usePostureCamera() {
     if (state.alertCount === 0 || message === null) return;
     closeNotification();
     notificationRef.current = showNotification(message);
+    onAlertRef.current?.({ title: SLOUCH_ALERT_TITLE, message });
   }, [state.alertCount, message, closeNotification]);
 
   // Turn the camera off when leaving the page, and free the model.
