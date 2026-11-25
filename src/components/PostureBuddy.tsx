@@ -2,14 +2,20 @@
 
 import { useEffect, type ReactNode } from "react";
 import { usePostureCamera } from "@/hooks/usePostureCamera";
-import { useReminder } from "@/hooks/useReminder";
+import { useReminders } from "@/hooks/useReminders";
 import { useNotificationPermission } from "@/lib/notifications";
+import type { ReminderConfig } from "@/lib/reminders";
 import CameraPanel from "./CameraPanel";
 import NotificationControl from "./NotificationControl";
-import { ReminderSettings, ReminderTimer } from "./ReminderPanel";
+import { ReminderTimer, RemindersSettings } from "./ReminderPanel";
 import { card, cardHeading } from "./styles";
 
 export const DUE_TITLE = "⏰ Sit up straight! · Karamel";
+
+/** The tab title while a reminder shows. Posture keeps its own wording. */
+export function reminderTitle(config: ReminderConfig): string {
+  return config.kind === "posture" ? DUE_TITLE : `⏰ ${config.emoji} ${config.name}! · Karamel`;
+}
 export const SLOUCH_TITLE = "👀 Caught you slouching! · Karamel";
 
 type PostureBuddyProps = {
@@ -18,18 +24,22 @@ type PostureBuddyProps = {
 };
 
 /**
- * Owns the timer, the camera check, and notification permission, and decides
+ * Owns the reminders, the camera check, and notification permission, and decides
  * what the kitten says. A camera alert wins over a timer reminder, because it
  * is about what the user is doing right now.
  */
 export default function PostureBuddy({ children }: PostureBuddyProps) {
-  const reminder = useReminder();
+  const reminders = useReminders();
   // The ref is kept apart from the camera state, so the state can be read during render.
   const { videoRef, ...camera } = usePostureCamera();
   const notifications = useNotificationPermission();
 
-  const message = camera.message ?? reminder.message;
-  const alertTitle = camera.alertVisible ? SLOUCH_TITLE : reminder.reminderVisible ? DUE_TITLE : null;
+  const message = camera.message ?? reminders.message;
+  const alertTitle = camera.alertVisible
+    ? SLOUCH_TITLE
+    : reminders.latestVisible
+      ? reminderTitle(reminders.latestVisible.config)
+      : null;
 
   // The tab title is set in one place, so two features never undo each other's change.
   useEffect(() => {
@@ -63,15 +73,15 @@ export default function PostureBuddy({ children }: PostureBuddyProps) {
             {children}
           </div>
         </div>
-        <ReminderTimer reminder={reminder} />
+        <ReminderTimer reminders={reminders} />
       </section>
 
       <div className="flex flex-col gap-6">
         <section aria-labelledby="reminder-settings-heading" className={`${card} flex flex-col gap-4 p-6`}>
           <h2 id="reminder-settings-heading" className={`${cardHeading} text-left`}>
-            Reminder settings
+            My reminders
           </h2>
-          <ReminderSettings reminder={reminder} />
+          <RemindersSettings reminders={reminders} />
           <NotificationControl status={notifications.status} onEnable={notifications.request} />
         </section>
         <CameraPanel camera={camera} videoRef={videoRef} />
