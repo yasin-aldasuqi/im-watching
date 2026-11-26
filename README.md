@@ -4,6 +4,9 @@
 
 Your posture buddy. Camera is optional and never leaves your device.
 
+**Try it: <https://karamel-mauve.vercel.app>** (installable as an app, see
+[Install as an app](#install-as-an-app)).
+
 **Karamel** is a small web app where a little orange Siberian kitten keeps an eye on you and
 gently reminds you to fix how you're sitting and straighten your back.
 
@@ -294,6 +297,20 @@ failure in any step fails the check, and the Playwright report is uploaded when 
 `main` is protected by a repository ruleset: changes go through pull requests, and the CI check
 must pass before merging.
 
+## Hosting
+
+The live site is hosted on [Vercel](https://vercel.com), connected to this GitHub repository:
+
+- Every push to `main` deploys to <https://karamel-mauve.vercel.app>.
+- Every pull request gets its own preview link, for example to try a change on a phone before
+  merging.
+- No environment variables or secrets are needed; the app is a static page.
+- The CSP and the other headers come from `next.config.ts`, so they are the same as locally.
+- No Vercel Analytics or other tracking is added.
+
+The e2e tests were also run once against the live site (by pointing Playwright's `baseURL` at it),
+and all passed, including the camera privacy test.
+
 ## Known limitations
 
 - **The app must stay open.** Closing the tab (or the installed app's window) stops the reminders.
@@ -324,6 +341,10 @@ must pass before merging.
   not measured yet.
 - **Model limits:** one person, head and shoulders must be in view, and accuracy varies between
   people (see [About the model](#about-the-model)).
+- **The host sees normal page requests.** Like any website, Vercel receives your IP address and
+  which files your browser loads (the page, scripts, the model). Your reminders, settings, and
+  camera images never leave your device. After the first visit, the installed app loads from its
+  saved copy when offline.
 - **The CSP allows inline scripts** (`'unsafe-inline'`). Nonces would be stricter, but they need
   per-request rendering, and the page is static. The app shows no user-generated content, so the
   XSS risk this leaves is small.
