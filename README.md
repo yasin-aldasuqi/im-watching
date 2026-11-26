@@ -284,12 +284,23 @@ End-to-end tests use [Playwright](https://playwright.dev) with Chromium and a fa
   controlled by the service worker still cannot send data to another origin (with a control test
   that switches the CSP off and checks that the leak is then detected).
 
+## Server (in progress)
+
+Phones freeze a web page soon after you leave it, so reminders cannot fire while Karamel is closed
+on an iPhone or iPad. A small ASP.NET Core + PostgreSQL server in [`server/`](server/) will send
+Web Push notifications at the right time instead. It is being built in steps; see
+[`server/README.md`](server/README.md) for what it stores (as little as possible) and how to run
+it. The website does not use it yet.
+
 ## Continuous integration
 
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every pull request
 and on every push to `main`. It does a clean `npm ci` with the Node version from `.nvmrc`, then runs
 lint, typecheck, unit tests, a production build, and the Playwright tests against that build. A
 failure in any step fails the check, and the Playwright report is uploaded when e2e tests fail.
+
+A second job, **Backend**, builds the server with warnings as errors, checks formatting with
+`dotnet format`, and runs its tests against a real PostgreSQL 18 service container.
 
 `main` is protected by a repository ruleset: changes go through pull requests, and the CI check
 must pass before merging.

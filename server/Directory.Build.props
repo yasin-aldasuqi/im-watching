@@ -1,0 +1,11 @@
+<Project>
+  <!-- Shared by every project in server/. -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- A warning is a bug report: fail the build instead of ignoring it. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Lock files pin every package, including indirect ones, like package-lock.json. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+</Project>
