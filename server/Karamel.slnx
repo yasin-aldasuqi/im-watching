@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Karamel.Api.Tests/Karamel.Api.Tests.csproj" />
+  <Project Path="Karamel.Api/Karamel.Api.csproj" />
+</Solution>

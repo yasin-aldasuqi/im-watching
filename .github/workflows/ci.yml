@@ -60,3 +60,52 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+      # The tests create (and drop) their own databases on this server.
+      KARAMEL_TEST_POSTGRES: Host=localhost;Port=5432;Username=karamel;Password=karamel
+    # A real PostgreSQL next to the job, the same major version as in development.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: karamel
+          POSTGRES_PASSWORD: karamel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U karamel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: server/global.json
+          cache: true
+          cache-dependency-path: server/**/packages.lock.json
+
+      - name: Restore
+        run: dotnet restore --locked-mode
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Check formatting
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Test (against real PostgreSQL)
+        run: dotnet test --no-build --configuration Release
