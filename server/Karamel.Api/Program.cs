@@ -1,7 +1,18 @@
 using Karamel.Api.Data;
 using Karamel.Api.Devices;
 using Karamel.Api.Health;
+using Karamel.Api.Push;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+
+// "dotnet run -- generate-vapid-keys" prints a new key pair and exits.
+if (args is ["generate-vapid-keys"])
+{
+    var (publicKey, privateKey) = VapidKeys.Generate();
+    Console.WriteLine($"Push__VapidPublicKey={publicKey}");
+    Console.WriteLine($"Push__VapidPrivateKey={privateKey}");
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,7 +33,25 @@ builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database");
 builder.Services.AddOptions<PushOptions>()
     .Bind(builder.Configuration.GetSection("Push"))
     .Validate(push => push.AllowedEndpointHosts.Count > 0, "Push:AllowedEndpointHosts must not be empty.")
+    .Validate(push => VapidKeys.Problem(push.VapidPublicKey, push.VapidPrivateKey) is null,
+        "Push:VapidPublicKey and Push:VapidPrivateKey must be a matching P-256 key pair (see server/README.md).")
+    .Validate(push => Uri.TryCreate(push.VapidSubject, UriKind.Absolute, out var subject)
+            && (subject.Scheme == Uri.UriSchemeHttps || subject.Scheme == Uri.UriSchemeMailto),
+        "Push:VapidSubject must be an https URL or a mailto: address.")
     .ValidateOnStart();
+
+// The client that talks to push services. It never follows redirects: a redirect could point
+// the server at an internal address, which is the SSRF the address allowlist prevents.
+builder.Services.AddHttpClient(PushDispatcher.HttpClientName)
+    .ConfigureHttpClient(http => http.Timeout = TimeSpan.FromSeconds(10))
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+    });
+builder.Services.AddScoped<PushDispatcher>();
+if (builder.Configuration.GetValue("Push:SenderEnabled", defaultValue: true))
+    builder.Services.AddHostedService<PushSenderService>();
 
 var rateLimits = builder.Configuration.GetSection("RateLimits").Get<RateLimitOptions>() ?? new RateLimitOptions();
 builder.Services.AddKaramelRateLimits(rateLimits);
@@ -50,5 +79,8 @@ app.UseRateLimiter();
 // Health probes from the hosting platform must always get through, even during a flood.
 app.MapHealthChecks("/api/health").DisableRateLimiting();
 app.MapDeviceEndpoints();
+
+// The website needs the server's public key to subscribe a phone. It is not a secret.
+app.MapGet("/api/push/public-key", (IOptions<PushOptions> push) => new { publicKey = push.Value.VapidPublicKey });
 
 app.Run();
