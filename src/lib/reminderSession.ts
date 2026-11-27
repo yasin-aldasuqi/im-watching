@@ -33,7 +33,11 @@ export type ReminderPatch = Partial<
 >;
 
 export type SessionAction =
-  | { type: "load"; reminders: ReminderConfig[] }
+  /**
+   * `savedTimers`: the timers saved before Karamel was closed (untrusted), restored with
+   * `restoreTimer` at time `now`. Missing or invalid ones start fresh.
+   */
+  | { type: "load"; reminders: ReminderConfig[]; savedTimers?: unknown; now?: number }
   | { type: "start"; now: number }
   | { type: "pause"; now: number }
   | { type: "resume"; now: number }
@@ -54,6 +58,75 @@ function freshTimer(config: ReminderConfig): ReminderState {
 
 function timersFor(reminders: ReminderConfig[]): Record<string, ReminderState> {
   return Object.fromEntries(reminders.map((r) => [r.id, freshTimer(r)]));
+}
+
+const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+/**
+ * A timer saved before Karamel was closed, brought back at time `now`, or null when the
+ * saved value is unusable (then the reminder starts fresh). Saved data is untrusted.
+ *
+ * Phones close apps in the background all the time, so a running session has to survive
+ * that. If a deadline passed while Karamel was closed, there is no new alert now (with
+ * push turned on, the push already reminded the user):
+ * - a repeating reminder continues on the same beat (start + n × interval), which is also
+ *   the beat the push server keeps;
+ * - a one-time reminder waits for "Done".
+ */
+export function restoreTimer(config: ReminderConfig, saved: unknown, now: number): ReminderState | null {
+  if (!config.enabled || typeof saved !== "object" || saved === null) return null;
+  const t = saved as Record<string, unknown>;
+  const intervalMs = secondsToMs(config.intervalSec);
+  const { reminderCount, lastReminderAt, messageIndex } = t;
+  if (typeof reminderCount !== "number" || !Number.isInteger(reminderCount) || reminderCount < 0) return null;
+  if (lastReminderAt !== null && !isFiniteNumber(lastReminderAt)) return null;
+  const base = {
+    // The current settings win over saved ones.
+    intervalMs,
+    autoRestart: config.autoRestart,
+    reminderCount,
+    lastReminderAt,
+    messageIndex:
+      typeof messageIndex === "number" && Number.isInteger(messageIndex) && messageIndex >= 0 ? messageIndex : null,
+  };
+
+  switch (t.status) {
+    case "idle":
+      return { ...base, status: "idle" };
+    case "paused":
+      return isFiniteNumber(t.remainingMs) && t.remainingMs > 0 && t.remainingMs <= intervalMs
+        ? { ...base, status: "paused", remainingMs: t.remainingMs }
+        : null;
+    case "due":
+      // Only one-time reminders wait for "Done".
+      return config.autoRestart ? null : { ...base, status: "due" };
+    case "running": {
+      const endsAt = t.endsAt;
+      // More than one interval ahead: the data or the clock is off.
+      if (!isFiniteNumber(endsAt) || endsAt - now > intervalMs) return null;
+      if (endsAt > now) return { ...base, status: "running", endsAt };
+      if (config.autoRestart) {
+        const missed = Math.floor((now - endsAt) / intervalMs) + 1;
+        return {
+          ...base,
+          status: "running",
+          endsAt: endsAt + missed * intervalMs,
+          reminderCount: reminderCount + missed,
+          lastReminderAt: endsAt + (missed - 1) * intervalMs,
+          messageIndex: base.messageIndex ?? 0,
+        };
+      }
+      return {
+        ...base,
+        status: "due",
+        reminderCount: reminderCount + 1,
+        lastReminderAt: endsAt,
+        messageIndex: base.messageIndex ?? 0,
+      };
+    }
+    default:
+      return null;
+  }
 }
 
 export function createSessionState(reminders: ReminderConfig[] = defaultReminders()): SessionState {
@@ -85,7 +158,18 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
   switch (action.type) {
     case "load": {
       const reminders = sanitizeReminders(action.reminders);
-      return { ...state, reminders, timers: timersFor(reminders), loaded: true };
+      const saved =
+        typeof action.savedTimers === "object" && action.savedTimers !== null
+          ? (action.savedTimers as Record<string, unknown>)
+          : {};
+      const now = action.now ?? 0;
+      const timers = Object.fromEntries(
+        reminders.map((config) => [
+          config.id,
+          (Object.hasOwn(saved, config.id) && restoreTimer(config, saved[config.id], now)) || freshTimer(config),
+        ]),
+      );
+      return { ...state, reminders, timers, loaded: true };
     }
 
     case "start":

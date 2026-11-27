@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { REMINDERS_STORAGE_KEY } from "@/hooks/useReminders";
+import { REMINDERS_STORAGE_KEY, SESSION_STORAGE_KEY } from "@/hooks/useReminders";
 import { EYES_MESSAGES, REMINDER_MESSAGES } from "@/lib/messages";
 import { secondsToMs } from "@/lib/reminder";
 import PostureBuddy, { DUE_TITLE } from "./PostureBuddy";
@@ -309,5 +309,29 @@ describe("notifications", () => {
     advance(30 * MIN);
     click("I'm sitting tall");
     expect(created[0].close).toHaveBeenCalled();
+  });
+});
+
+describe("closing and reopening Karamel", () => {
+  it("keeps the session running, without alerting again for reminders that fired while closed", () => {
+    const { created } = installNotificationMock("granted");
+    const first = renderBuddy();
+    turnOn("Drink water");
+    click("Start");
+    advance(10 * MIN);
+    first.unmount(); // Closed: the phone stopped Karamel in the background.
+    expect(JSON.parse(window.localStorage.getItem(SESSION_STORAGE_KEY)!).timers.posture.status).toBe("running");
+
+    vi.setSystemTime(Date.now() + 100 * MIN); // Reopened 1 hour 40 minutes later.
+    renderBuddy();
+    advance(0);
+
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument(); // Still running.
+    // Water (every 45 min) continues on its beat: it fired at 0:45 and 1:30; next at 2:15.
+    expect(nextLabel()).toMatch(/Drink water/);
+    expect(countdown()).toBe("25:00");
+    // Posture (waits for Done) is waiting, but nothing new popped up on reopening.
+    expect(screen.getByRole("button", { name: "I'm sitting tall" })).toBeInTheDocument();
+    expect(created).toHaveLength(0);
   });
 });

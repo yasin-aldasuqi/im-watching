@@ -17,6 +17,11 @@
 // Change the name to drop every saved file, for example after changing the rules above.
 const CACHE = "karamel-v1";
 
+// The reminders' titles and messages, saved by the page (src/lib/pushTexts.ts uses the same
+// names). A push carries only the reminder's id; the text stays on the device.
+const REMINDER_TEXTS_CACHE = "karamel-reminder-texts";
+const REMINDER_TEXTS_URL = "/__karamel/reminder-texts.json";
+
 const PRECACHE = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -40,7 +45,8 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const names = await caches.keys();
-      await Promise.all(names.filter((name) => name !== CACHE).map((name) => caches.delete(name)));
+      const keep = [CACHE, REMINDER_TEXTS_CACHE];
+      await Promise.all(names.filter((name) => !keep.includes(name)).map((name) => caches.delete(name)));
       await self.clients.claim();
     })(),
   );
@@ -82,8 +88,50 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (request.method !== "GET" || request.headers.has("range")) return;
   if (url.pathname === "/sw.js") return;
+  // The push server's API is never cached: its answers must always be fresh.
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/__karamel/")) return;
 
   event.respondWith(url.pathname.startsWith("/_next/static/") ? cacheFirst(request) : networkFirst(request));
+});
+
+/** The saved title and messages for a reminder id, or null. */
+async function reminderText(key) {
+  try {
+    const cache = await caches.open(REMINDER_TEXTS_CACHE);
+    const saved = await cache.match(REMINDER_TEXTS_URL);
+    const texts = saved ? await saved.json() : null;
+    const text = texts && Object.hasOwn(texts, key) ? texts[key] : null;
+    if (text && typeof text.title === "string" && Array.isArray(text.messages)) return text;
+  } catch {
+    // Missing or broken: the neutral text below is used.
+  }
+  return null;
+}
+
+// A reminder from the push server (server/), while Karamel is closed. The message is only
+// {"reminderKey": "..."}. A notification is always shown: Safari takes the push permission
+// away from sites whose pushes show nothing.
+self.addEventListener("push", (event) => {
+  event.waitUntil(
+    (async () => {
+      let key = null;
+      try {
+        const data = event.data ? event.data.json() : null;
+        if (data && typeof data.reminderKey === "string") key = data.reminderKey;
+      } catch {
+        // Not JSON: show the neutral text.
+      }
+      const text = key ? await reminderText(key) : null;
+      const messages = text ? text.messages.filter((m) => typeof m === "string" && m.length > 0) : [];
+      await self.registration.showNotification(text ? text.title : "🐾 Karamel", {
+        body: messages.length > 0 ? messages[Math.floor(Math.random() * messages.length)] : "Time for a little break.",
+        // The same tag as the page's own notification for this reminder (src/lib/notifications.ts),
+        // so when Karamel is open too, the two show as one.
+        tag: key ? `karamel-reminder-${key}` : "karamel-reminder",
+        icon: "/icons/icon-192.png",
+      });
+    })(),
+  );
 });
 
 // Clicking a notification brings the app window to the front.

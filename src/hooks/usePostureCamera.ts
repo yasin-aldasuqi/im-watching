@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Alert } from "@/lib/alertChannels";
 import { SLOUCH_MESSAGES } from "@/lib/messages";
-import { showNotification, type NotificationHandle } from "@/lib/notifications";
+import { SLOUCH_NOTIFICATION_TAG, showNotification, type NotificationHandle } from "@/lib/notifications";
 import { readSetting, storageKey, writeSetting } from "@/lib/storage";
 import { createPoseDetector, type PoseDetector } from "@/lib/poseDetector";
 import {
@@ -190,7 +190,7 @@ export function usePostureCamera({ onAlert }: { onAlert?: (alert: Alert) => void
   useEffect(() => {
     if (state.alertCount === 0 || message === null) return;
     closeNotification();
-    notificationRef.current = showNotification(message);
+    notificationRef.current = showNotification(message, undefined, SLOUCH_NOTIFICATION_TAG);
     onAlertRef.current?.({ title: SLOUCH_ALERT_TITLE, message });
   }, [state.alertCount, message, closeNotification]);
 

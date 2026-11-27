@@ -32,6 +32,29 @@ const contentSecurityPolicy = [
   "frame-ancestors 'none'",
 ].join("; ");
 
+/**
+ * The push server (server/), when one is configured: KARAMEL_API_URL, for example
+ * "https://api.example.com". The browser calls /api/* on the website itself and the website
+ * forwards those calls to the server, so the CSP stays `connect-src 'self'` and the server
+ * needs no CORS. Without it, nothing is forwarded, /api/* is a 404, and the app hides
+ * "Remind me when Karamel is closed".
+ */
+function apiOrigin(): string | null {
+  const value = process.env.KARAMEL_API_URL?.trim();
+  if (!value) return null;
+  const url = new URL(value);
+  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) {
+    throw new Error("KARAMEL_API_URL must use https (plain http only for localhost).");
+  }
+  if (url.pathname !== "/" || url.search || url.hash || url.username || url.password) {
+    throw new Error("KARAMEL_API_URL must be an origin only, like https://api.example.com.");
+  }
+  return url.origin;
+}
+
+const api = apiOrigin();
+
 const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
@@ -43,6 +66,15 @@ const nextConfig: NextConfig = {
         as: "*.css",
       },
     },
+  },
+  // Tells the page whether a push server is configured, so a site without one never asks
+  // for /api (that would be a pointless 404 on every visit). Only "on" or "off" reaches the
+  // browser, not the server's address.
+  env: {
+    KARAMEL_PUSH_SERVER: api ? "on" : "off",
+  },
+  async rewrites() {
+    return api ? [{ source: "/api/:path*", destination: `${api}/api/:path*` }] : [];
   },
   async headers() {
     return [

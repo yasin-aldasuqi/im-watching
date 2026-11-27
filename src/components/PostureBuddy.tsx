@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useAlertChannels } from "@/hooks/useAlertChannels";
 import { usePostureCamera } from "@/hooks/usePostureCamera";
 import { usePostureMode } from "@/hooks/usePostureMode";
+import { usePushReminders } from "@/hooks/usePushReminders";
 import { useReminders } from "@/hooks/useReminders";
 import { blinkTitle, type Alert } from "@/lib/alertChannels";
 import { useNotificationPermission } from "@/lib/notifications";
@@ -60,6 +61,14 @@ export default function PostureBuddy({ children }: PostureBuddyProps) {
     skipPosture: cameraJudging && (mode === "camera-only" || (mode === "smart" && camera.reading === "good")),
     postureWatched: cameraJudging && mode === "camera-only",
     onAlert: handleAlert,
+  });
+  const push = usePushReminders({
+    loaded: reminders.loaded,
+    reminders: reminders.reminders,
+    active: reminders.active,
+    // In Smart and Camera-only modes the camera decides about posture, and only the page
+    // knows what the camera sees, so posture is not handed to the push server meanwhile.
+    postureOnDevice: cameraJudging && mode !== "always",
   });
 
   const message = camera.message ?? reminders.message;
@@ -156,6 +165,7 @@ export default function PostureBuddy({ children }: PostureBuddyProps) {
             }}
             onTestSpeech={() => speak("Hi! I'm Karamel. Sit up tall. 🐾")}
             onTestNudge={() => setNudge({ title: "🐾 Karamel", message: "This is how a full-screen nudge looks." })}
+            push={push}
           />
         </section>
         <CameraPanel

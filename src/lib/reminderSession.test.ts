@@ -228,3 +228,74 @@ describe("skipping the posture reminder (smart camera modes)", () => {
     expect(state.lastSkippedAt).toBeNull();
   });
 });
+
+describe("restoring a session after Karamel was closed", () => {
+  /** Posture (30 min, waits for Done) and water (45 min, restarts by itself), started at T0. */
+  function savedAt(now: number) {
+    const started = act(postureAndWater(), { type: "start", now: T0 });
+    return { reminders: started.reminders, timers: JSON.parse(JSON.stringify(started.timers)), now };
+  }
+
+  function reopen(saved: { reminders: SessionState["reminders"]; timers: unknown }, now: number) {
+    return act(createSessionState(), { type: "load", reminders: saved.reminders, savedTimers: saved.timers, now });
+  }
+
+  it("continues a countdown that has not ended yet", () => {
+    const state = reopen(savedAt(T0), T0 + 10 * MIN);
+    expect(sessionStatus(state)).toBe("running");
+    expect(state.timers.posture).toMatchObject({ status: "running", endsAt: T0 + 30 * MIN });
+    expect(state.timers.water).toMatchObject({ status: "running", endsAt: T0 + 45 * MIN });
+  });
+
+  it("moves a repeating reminder on, on the same beat, counting the firings it missed", () => {
+    // Closed for 2 hours: water (every 45 min) fired at 0:45 and 1:30; next is 2:15.
+    const state = reopen(savedAt(T0), T0 + 120 * MIN);
+    expect(state.timers.water).toMatchObject({
+      status: "running",
+      endsAt: T0 + 135 * MIN,
+      reminderCount: 2,
+      lastReminderAt: T0 + 90 * MIN,
+    });
+  });
+
+  it("lets a one-time reminder that ended wait for Done", () => {
+    const state = reopen(savedAt(T0), T0 + 120 * MIN);
+    expect(state.timers.posture).toMatchObject({ status: "due", reminderCount: 1, lastReminderAt: T0 + 30 * MIN });
+  });
+
+  it("keeps a paused session paused", () => {
+    const paused = act(postureAndWater(), { type: "start", now: T0 }, { type: "pause", now: T0 + 10 * MIN });
+    const state = reopen({ reminders: paused.reminders, timers: paused.timers }, T0 + 500 * MIN);
+    expect(sessionStatus(state)).toBe("paused");
+    expect(state.timers.posture).toMatchObject({ status: "paused", remainingMs: 20 * MIN });
+  });
+
+  it("uses the current settings, not the saved ones", () => {
+    const saved = savedAt(T0);
+    const reminders = saved.reminders.map((r) => (r.id === "water" ? { ...r, enabled: false } : r));
+    const state = reopen({ reminders, timers: saved.timers }, T0 + MIN);
+    expect(state.timers.water.status).toBe("idle");
+    expect(state.timers.posture.status).toBe("running");
+  });
+
+  it("starts fresh from saved data that is broken or does not fit", () => {
+    const saved = savedAt(T0);
+    const posture = saved.timers.posture;
+    const broken: [string, unknown][] = [
+      ["posture", null],
+      ["posture", "running"],
+      ["posture", { ...posture, status: "flying" }],
+      ["posture", { ...posture, endsAt: "soon" }],
+      ["posture", { ...posture, endsAt: T0 + 31 * MIN }], // more than one interval (30 min) ahead
+      ["posture", { ...posture, reminderCount: -1 }],
+      ["posture", { ...posture, lastReminderAt: "yesterday" }],
+      ["posture", { status: "paused", remainingMs: 31 * MIN, reminderCount: 0, lastReminderAt: null, messageIndex: null }],
+      ["water", { status: "due", reminderCount: 1, lastReminderAt: T0, messageIndex: 0 }], // water restarts by itself
+    ];
+    for (const [id, timer] of broken) {
+      const state = reopen({ reminders: saved.reminders, timers: { ...saved.timers, [id]: timer } }, T0);
+      expect(state.timers[id].status, JSON.stringify(timer)).toBe("idle");
+    }
+    expect(reopen({ reminders: saved.reminders, timers: "garbage" }, T0).timers.posture.status).toBe("idle");
+  });
+});
