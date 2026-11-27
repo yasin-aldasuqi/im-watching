@@ -10,5 +10,7 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
+    // As if built with a push server (next.config.ts sets this from KARAMEL_API_URL).
+    env: { KARAMEL_PUSH_SERVER: "on" },
   },
 });

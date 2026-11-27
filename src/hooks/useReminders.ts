@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { Alert } from "@/lib/alertChannels";
-import { showNotification, type NotificationHandle } from "@/lib/notifications";
+import { reminderNotificationTag, showNotification, type NotificationHandle } from "@/lib/notifications";
 import { remainingMs, type ReminderState } from "@/lib/reminder";
 import {
   createCustomReminder,
   defaultMessages,
   defaultReminders,
   migrateLegacySettings,
+  notificationTitle,
   sanitizeReminders,
   type ReminderConfig,
 } from "@/lib/reminders";
@@ -19,11 +20,24 @@ import {
 import { readSetting, removeSetting, storageKey, writeSetting } from "@/lib/storage";
 
 const REMINDERS_SETTING = "reminders";
+/** The running timers, so a session survives closing and reopening Karamel. */
+const SESSION_SETTING = "session";
 // Settings from before custom reminders. Migrated into the posture reminder once.
 const LEGACY_INTERVAL_SETTING = "interval-sec";
 const LEGACY_AUTO_RESTART_SETTING = "auto-restart";
 
 export const REMINDERS_STORAGE_KEY = storageKey(REMINDERS_SETTING);
+export const SESSION_STORAGE_KEY = storageKey(SESSION_SETTING);
+
+/** The saved timers, or undefined. Untrusted: the session reducer checks every field. */
+function loadSavedTimers(): unknown {
+  try {
+    const saved: unknown = JSON.parse(readSetting(SESSION_SETTING) ?? "null");
+    return typeof saved === "object" && saved !== null ? (saved as { timers?: unknown }).timers : undefined;
+  } catch {
+    return undefined;
+  }
+}
 /** How long the bubble stays up after a reminder that restarts by itself. */
 export const REMINDER_VISIBLE_MS = 10_000;
 const TICK_MS = 1000;
@@ -61,9 +75,6 @@ function messageFor(config: ReminderConfig, timer: ReminderState): string | null
   return config.messages[timer.messageIndex % config.messages.length];
 }
 
-export function notificationTitle(config: ReminderConfig): string {
-  return `${config.emoji} ${config.name} · Karamel`;
-}
 
 /**
  * Connects the reminder session to the browser: loading and saving the list,
@@ -106,7 +117,7 @@ export function useReminders({ skipPosture = false, postureWatched = false, onAl
   }, []);
 
   useEffect(() => {
-    dispatch({ type: "load", reminders: loadSavedReminders() });
+    dispatch({ type: "load", reminders: loadSavedReminders(), savedTimers: loadSavedTimers(), now: Date.now() });
   }, []);
 
   // Save after loading only, so the defaults never overwrite saved reminders.
@@ -117,12 +128,19 @@ export function useReminders({ skipPosture = false, postureWatched = false, onAl
     removeSetting(LEGACY_AUTO_RESTART_SETTING);
   }, [state.loaded, state.reminders]);
 
+  useEffect(() => {
+    if (!state.loaded) return;
+    writeSetting(SESSION_SETTING, JSON.stringify({ timers: state.timers }));
+  }, [state.loaded, state.timers]);
+
   const status = sessionStatus(state);
 
   useEffect(() => {
     if (status !== "running") return;
     const tick = () =>
       dispatch({ type: "tick", now: at(), random: Math.random(), skipPosture: skipPostureRef.current });
+    // Check right away too (for example, a session restored after reopening Karamel).
+    tick();
     const id = window.setInterval(tick, TICK_MS);
     // Background tabs get throttled timers. Re-check as soon as the user is back.
     document.addEventListener("visibilitychange", tick);
@@ -140,20 +158,24 @@ export function useReminders({ skipPosture = false, postureWatched = false, onAl
   // One notification (and one onAlert call) per firing. A new notification
   // replaces that reminder's previous one.
   useEffect(() => {
+    // Before loading, the timers are placeholders; counting starts with the loaded ones.
+    if (!state.loaded) return;
     for (const config of state.reminders) {
       const timer = state.timers[config.id];
       if (!timer) continue;
-      const seen = seenCountsRef.current.get(config.id) ?? 0;
+      // The first count seen is the starting point: a timer restored after reopening
+      // Karamel does not alert again for firings that happened while it was closed.
+      const seen = seenCountsRef.current.get(config.id);
       const message = messageFor(config, timer);
-      if (timer.reminderCount > seen && message !== null) {
+      if (seen !== undefined && timer.reminderCount > seen && message !== null) {
         closeNotification(config.id);
-        const notification = showNotification(message, notificationTitle(config));
+        const notification = showNotification(message, notificationTitle(config), reminderNotificationTag(config.id));
         if (notification) notificationsRef.current.set(config.id, notification);
         onAlertRef.current?.({ title: `${config.emoji} ${config.name}`, message });
       }
       seenCountsRef.current.set(config.id, timer.reminderCount);
     }
-  }, [state.reminders, state.timers, closeNotification]);
+  }, [state.loaded, state.reminders, state.timers, closeNotification]);
 
   useEffect(() => {
     const notifications = notificationsRef.current;
@@ -191,6 +213,8 @@ export function useReminders({ skipPosture = false, postureWatched = false, onAl
   const closeAll = () => notificationsRef.current.forEach((_, id) => closeNotification(id));
 
   return {
+    /** False until the saved reminders and timers were loaded. */
+    loaded: state.loaded,
     reminders: state.reminders,
     active,
     status,

@@ -55,9 +55,19 @@ The app used to be called "I'm Watching". Settings saved under the old name are 
 
   Sound, speech, and the nudge start off, because they can be disruptive; blinking starts on.
   Each has a test button where it makes sense. Skipped posture reminders trigger none of them.
-- **Local only.** Your reminders are saved in your browser's `localStorage`. Nothing is sent to a
-  server. Saved data is treated as untrusted input and cleaned before use (length and count limits,
-  valid intervals, safe ids), so corrupted data falls back to the defaults instead of crashing.
+- **Local by default.** Your reminders and your running session are saved in your browser's
+  `localStorage`. Nothing is sent to a server unless you turn on "Remind me when Karamel is closed"
+  (below). Saved data is treated as untrusted input and cleaned before use (length and count
+  limits, valid intervals, safe ids), so corrupted data falls back to the defaults instead of
+  crashing.
+- **The session survives closing Karamel.** Phones close apps in the background all the time, so
+  running timers are saved and restored. A countdown continues where it was; a repeating reminder
+  whose time passed while Karamel was closed continues on the same beat (09:00, 09:30, 10:00, ...)
+  without alerting again on reopening; a one-time reminder that passed waits for "Done".
+- **📱 Remind me when Karamel is closed (optional).** Phones freeze a web page soon after you leave
+  it, so on iPhone and iPad the page cannot remind you by itself. With this on, Karamel's server
+  ([`server/`](server/)) sends a Web Push at the right times. See
+  [Reminders while Karamel is closed](#reminders-while-karamel-is-closed).
 - **Optional camera posture check.** Turn on the camera, sit up straight, and press "Set my good
   posture". If you slouch for 5 seconds, the kitten calls you out ("Caught you slouching. 👀"), at
   most once a minute. See [Camera posture check](#camera-posture-check).
@@ -109,9 +119,53 @@ How it works:
 - **Notifications on Android**: Android browsers do not allow a page to create a notification
   directly, only a service worker. Karamel falls back to the worker there, so reminders can still
   notify you. Clicking a notification brings the Karamel window to the front.
-- **No push notifications, on purpose.** Web push needs a server and sends every message through
-  the browser maker's push service (Google, Mozilla, or Apple). That would break "never leaves your
-  device", so reminders still need the Karamel window to be open (it can be minimized).
+- **Reminders while closed** come from Web Push and are optional; see
+  [Reminders while Karamel is closed](#reminders-while-karamel-is-closed). On iPhone and iPad, Web
+  Push only works in the app added to the Home Screen; the app explains this.
+
+## Reminders while Karamel is closed
+
+An option in "How should I remind you?": **📱 Remind me when Karamel is closed.** It shows only on
+a website built with a push server (`KARAMEL_API_URL`, see [Hosting](#hosting)).
+
+How it works:
+
+1. Turning it on asks for notification permission, subscribes this browser with its push service
+   (Apple's, Google's, Mozilla's, or Microsoft's) using the server's public VAPID key, and registers
+   that subscription with Karamel's server. The server returns a device id and a secret key, kept
+   in `localStorage`.
+2. Whenever the schedule changes (Start, Pause, Done, a firing, a new interval), the page sends the
+   whole list: for each running reminder, its id, "fires in N seconds", and its interval. Not every
+   second: the list has a signature made of the absolute deadlines, and only a change sends it.
+3. At the right time, the server sends an encrypted push holding only `{"reminderKey": "water"}`.
+   The service worker looks up that reminder's title and messages, which the page saved on the
+   device (Cache Storage), and shows the notification.
+4. Turning it off deletes the device and its schedules from the server and drops the
+   subscription.
+
+**What leaves the device, honestly:** with this on, Karamel's server learns an anonymous push
+address and the reminder ids and times (for example "water, in 45 minutes, every 45 minutes"), and
+the push service (Apple, Google, ...) learns when it delivers a message to you. **Reminder names
+and messages, settings, and anything from the camera stay on the device.** With it off (the
+default), nothing is sent anywhere.
+
+Decisions:
+
+- **The website forwards `/api/*` to the server** (a Next.js rewrite), so the page only ever talks
+  to its own origin: the CSP stays `connect-src 'self'` and the server needs no CORS.
+- **No server, no option, no request.** The build turns `KARAMEL_API_URL` into an on/off flag for
+  the page, so a site without a server never asks for `/api` (and never logs a 404).
+- **One notification, not two.** When Karamel is open, its own reminder and the push for the same
+  firing use the same notification tag, so the second replaces the first. Times sent to the
+  server are rounded up, so the page's own reminder comes first.
+- **Posture stays on the device while the camera decides** (Smart and Camera-only modes): only the
+  page knows what the camera sees, so posture is not handed to the server meanwhile.
+- **Self-repair:** if the server forgot the device (`401`), the page registers the subscription
+  again and retries once. If the browser replaced the subscription, it is registered again on the
+  next load. A failed sync is retried when the device is back online or Karamel is back on screen.
+- **Safari's rule:** every push shows a notification, even when the text is missing (then a neutral
+  "Time for a little break."), because Safari takes the push permission away from sites whose
+  pushes show nothing.
 
 ## How the timer works
 
@@ -286,14 +340,48 @@ End-to-end tests use [Playwright](https://playwright.dev) with Chromium and a fa
   finds no errors, the app opens and runs with the network off after one visit, and a page
   controlled by the service worker still cannot send data to another origin (with a control test
   that switches the CSP off and checks that the leak is then detected).
+- `e2e/push.fullstack.spec.ts` (optional, skipped unless configured): the whole chain, browser →
+  the website's `/api` rewrite → the .NET API → PostgreSQL. Turning on creates the device, Start
+  creates a `posture` schedule firing in 30 minutes by the server's clock, Pause removes it, and
+  turning off deletes the device. Headless Chromium has no push service, so a small script stands
+  in for the browser's subscription (with a real P-256 key). To run it: start PostgreSQL, run the
+  API with `Push__SenderEnabled=false` (so nothing is sent to a real push service), build and
+  start the website with `KARAMEL_API_URL=http://localhost:5080` on port 3100, then run
+  `KARAMEL_FULLSTACK_DB=postgresql://karamel@localhost:55432/karamel npx playwright test
+  e2e/push.fullstack.spec.ts`. It was checked to fail with the API stopped and with the Bearer key
+  left out of the requests.
 
-## Server (in progress)
+Tests for reminders while closed (Vitest):
 
-Phones freeze a web page soon after you leave it, so reminders cannot fire while Karamel is closed
-on an iPhone or iPad. A small ASP.NET Core + PostgreSQL server in [`server/`](server/) will send
-Web Push notifications at the right time instead. It is being built in steps; see
-[`server/README.md`](server/README.md) for what it stores (as little as possible) and how to run
-it. The website does not use it yet.
+- `src/lib/reminderSession.test.ts` (restoring): a countdown continues, a repeating reminder
+  catches up on its beat, a one-time reminder waits for Done, a paused session stays paused,
+  current settings win, and nine kinds of broken saved data start fresh.
+- `src/lib/pushSchedules.test.ts`: which timers become schedules (running only), rounding up, and
+  a signature that does not change while time passes.
+- `src/lib/pushClient.test.ts`: support detection (including the iPhone Home Screen case), turning
+  on (permission first, the server's key, registration), replacing a subscription made with old
+  keys, syncing with the Bearer secret, registering again after a `401`, turning off, and checking
+  on load. A fake browser and a fake server (`src/test-utils/fakePush.ts`) stand in.
+- `src/lib/serviceWorker.test.ts`: runs the real `public/sw.js` in a fake worker. A push shows the
+  reminder's own text with the page's tag, a missing text still shows a neutral notification,
+  cleanup keeps the saved texts, and `/api` is never cached.
+- `src/components/PushReminders.test.tsx` and one test in `CameraPanel.test.tsx`: the option
+  through the real page component, from hidden to on, syncing on Start and Pause but not every
+  second, closing and reopening, a server that is down, blocked notifications, and posture staying
+  on the device while the camera decides.
+
+Each guarantee was checked by breaking it on purpose (23 breaks in this step), for example: timers
+not saved, catching up off the beat, alerting again on reopening, no re-registration after a `401`,
+keeping a subscription with old keys, page and worker disagreeing on the cache name or the tag, no
+sync when the schedule changes, and posture sent while the camera decides. Two of the first test
+runs found real bugs: reopening alerted again for reminders that fired while Karamel was closed,
+and a site without a server logged a 404 on every visit.
+
+## Server
+
+The ASP.NET Core + PostgreSQL server in [`server/`](server/) sends the reminders while Karamel is
+closed. See [`server/README.md`](server/README.md) for what it stores (as little as possible), its
+API, and how to run it. It is not hosted yet, so the live site does not show the option.
 
 ## Continuous integration
 
@@ -315,7 +403,10 @@ The live site is hosted on [Vercel](https://vercel.com), connected to this GitHu
 - Every push to `main` deploys to <https://karamel-mauve.vercel.app>.
 - Every pull request gets its own preview link, for example to try a change on a phone before
   merging.
-- No environment variables or secrets are needed; the app is a static page.
+- No secrets are needed. One optional environment variable: `KARAMEL_API_URL`, the push server's
+  origin (for example `https://api.example.com`; `https` only, plain `http` only for `localhost`).
+  It is read at build time; without it, the website has no `/api` and hides the push option. An
+  invalid value fails the build. It is not set yet.
 - The CSP and the other headers come from `next.config.ts`, so they are the same as locally.
 - No Vercel Analytics or other tracking is added.
 
@@ -324,9 +415,18 @@ and all passed, including the camera privacy test.
 
 ## Known limitations
 
-- **The app must stay open.** Closing the tab (or the installed app's window) stops the reminders.
-  A minimized window keeps working. There is no push server, on purpose (see
-  [Install as an app](#install-as-an-app)). A tray app would need a desktop wrapper such as Tauri.
+- **Without the push option, the app must stay open.** Closing the tab (or the installed app's
+  window) stops the reminders; a minimized window keeps working. With
+  [reminders while closed](#reminders-while-karamel-is-closed) on, the server sends them instead,
+  but the live site has no server yet.
+- **Reminders while closed are not tested on a real phone yet.** The browser side is tested with
+  fakes, the full chain to the database with a stand-in subscription, and the server's messages
+  against the RFCs, but no real push service has delivered one. That is the next step.
+- **Only reminders, not slouch alerts, work while closed.** The camera only runs while Karamel is
+  open anyway.
+- **When Karamel is open, a push can still sound twice on some systems.** The same tag makes the
+  push replace the page's notification instead of adding a second one, but whether the
+  replacement makes a sound again depends on the system.
 - **Background tabs can be up to about a minute late.** Browsers throttle timers in background
   tabs. The reminder fires on the next allowed tick, or right away when you return to the tab.
   With short intervals such as 30 seconds, this means a background tab may remind you about once a
@@ -334,7 +434,7 @@ and all passed, including the camera privacy test.
 - **Mobile is not tested on a real device.** The Android notification fallback is tested with a
   fake service worker, and installing was checked with Chrome's installability check on desktop,
   not on a phone or iPhone. Phones also pause background pages much more than desktops, so
-  reminders on a phone are only reliable while Karamel is on screen.
+  without the push option, reminders on a phone are only reliable while Karamel is on screen.
 - **The camera works offline only after it was used once online**, because the pose model (about
   6 MB) is saved the first time it is downloaded, not on install.
 - **Speech depends on the browser's voices.** If the browser has no offline voice (common in

@@ -2,12 +2,14 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALERT_VISIBLE_MS, BASELINE_STORAGE_KEY } from "@/hooks/usePostureCamera";
 import { POSTURE_MODE_STORAGE_KEY } from "@/hooks/usePostureMode";
+import { PUSH_SYNC_DELAY_MS } from "@/hooks/usePushReminders";
 import { EYES_MESSAGES, REMINDER_MESSAGES } from "@/lib/messages";
 import { SLOUCH_MESSAGES } from "@/lib/messages";
 import { NOTIFICATION_TITLE } from "@/lib/notifications";
 import { createPoseDetector } from "@/lib/poseDetector";
 import { CALIBRATION_SAMPLES, LANDMARK, SLOUCH_HOLD_MS, type Landmark } from "@/lib/posture";
 import { installAudioMock } from "@/test-utils/browserMocks";
+import { installFakePush, removeFakePush } from "@/test-utils/fakePush";
 import PostureBuddy, { SLOUCH_TITLE } from "./PostureBuddy";
 
 vi.mock("@/lib/poseDetector", () => ({ createPoseDetector: vi.fn() }));
@@ -526,5 +528,38 @@ describe("ways to remind with the camera", () => {
     advance(30_000);
     expect(screen.getByTestId("skip-note")).toBeInTheDocument();
     expect(audio.meows()).toBe(0);
+  });
+});
+
+describe("reminders while Karamel is closed, with the camera on", () => {
+  /** Lets the push code's fetches finish and its short sync delay pass. */
+  async function settlePush() {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PUSH_SYNC_DELAY_MS);
+    });
+  }
+
+  it("keeps posture on the device while the camera decides about it, but not in Always mode", async () => {
+    const fake = installFakePush();
+    try {
+      renderBuddy();
+      await settlePush();
+      const push = within(screen.getByRole("group", { name: "Remind me when Karamel is closed" }));
+      fireEvent.click(push.getByRole("button", { name: "Turn on" }));
+      await settlePush();
+      await turnOn();
+      await calibrate(); // Smart mode (the default), and the camera can judge posture now.
+      startPostureEvery30s();
+      await settlePush();
+
+      const lastSchedules = () => fake.calls.filter((c) => c.method === "PUT").at(-1)?.body;
+      expect(lastSchedules()).toEqual({ schedules: [] });
+
+      chooseMode("Always");
+      await settlePush();
+      expect(lastSchedules()).toMatchObject({ schedules: [{ reminderKey: "posture", intervalSeconds: null }] });
+    } finally {
+      removeFakePush();
+    }
   });
 });

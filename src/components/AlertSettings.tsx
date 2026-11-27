@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { AlertChannels } from "@/lib/alertChannels";
 import type { NotificationStatus } from "@/lib/notifications";
 import NotificationControl from "./NotificationControl";
+import PushControl, { type PushControlProps } from "./PushControl";
 import { secondaryButton } from "./styles";
 
 type AlertSettingsProps = {
@@ -13,6 +14,7 @@ type AlertSettingsProps = {
   onTestSound: () => void;
   onTestSpeech: () => void;
   onTestNudge: () => void;
+  push: PushControlProps;
 };
 
 const testButton = `${secondaryButton} px-3 py-1 text-xs`;
@@ -75,6 +77,7 @@ export default function AlertSettings({
   onTestSound,
   onTestSpeech,
   onTestNudge,
+  push,
 }: AlertSettingsProps) {
   return (
     <div className="flex flex-col gap-3 text-left">
@@ -93,6 +96,8 @@ export default function AlertSettings({
           )}
         </div>
       </div>
+
+      <PushControl {...push} />
 
       <ul className="flex flex-col gap-2">
         <ChannelRow

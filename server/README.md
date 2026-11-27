@@ -5,9 +5,9 @@ leave it, so the page cannot send its own notifications. This server sends a Web
 the right time instead, and the phone's push service (for example Apple's) wakes Karamel to show
 it.
 
-> Status: step 3 of 5. Done: the foundation, the API, and the push sender. Next: the website
-> changes and hosting. Nothing has been sent to a real push service yet (see
-> [Known limitations](#known-limitations)).
+> Status: step 4 of 5. Done: the foundation, the API, the push sender, and the website side
+> (see the main README, "Reminders while Karamel is closed"). Next: hosting. Nothing has been
+> sent to a real push service yet (see [Known limitations](#known-limitations)).
 
 ## What it stores
 

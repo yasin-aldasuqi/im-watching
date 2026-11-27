@@ -214,3 +214,8 @@ export function migrateLegacySettings(
   if (autoRestart !== null) posture.autoRestart = autoRestart;
   return reminders;
 }
+
+/** The title of a reminder's notification, on the page and in pushes. */
+export function notificationTitle(config: Pick<ReminderConfig, "emoji" | "name">): string {
+  return `${config.emoji} ${config.name} · Karamel`;
+}
